@@ -1,4 +1,4 @@
-// Neon Prism v0.1.0 — bot harness (anti-slop gates).
+// Neon Prism v0.2.0 — bot harness (anti-slop gates).
 // Run: node tests/bot.js
 //
 // Gates:

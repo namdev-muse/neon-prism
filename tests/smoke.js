@@ -1,4 +1,4 @@
-// Neon Prism v0.1.0 — smoke tests for the pure sim (physics.js).
+// Neon Prism v0.2.0 — smoke tests for the pure sim (physics.js).
 // Run: node tests/smoke.js
 import {
   VERSION, CHAMBERS, chamberById, traceBeam, createRun, startRun,
@@ -29,7 +29,9 @@ check('prism turns W->N', prismTurn('W') === 'N');
 check('prism turns N->E', prismTurn('N') === 'E');
 
 // --- chamber data sanity ----------------------------------------------------
-check('3 chambers defined', CHAMBERS.length === 3);
+check('12 chambers defined', CHAMBERS.length === 12);
+check('solver pars strictly increasing (difficulty curve)', CHAMBERS.every((c, i) => i === 0 || c.parMoves > CHAMBERS[i - 1].parMoves),
+  CHAMBERS.map((c) => c.parMoves).join(','));
 for (const c of CHAMBERS) {
   const cells = new Set();
   const all = [c.emitter, ...c.walls, ...c.mirrors, ...c.prisms, ...c.receptors];

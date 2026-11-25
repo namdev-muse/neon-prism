@@ -1,4 +1,4 @@
-// Neon Prism v0.1.0 — headless browser render check.
+// Neon Prism v0.2.0 — headless browser render check.
 // Serves the game dir over local HTTP, loads it in a headless browser, and
 // asserts the M1 core, by hook and by eye:
 //   - the menu renders over a LIVE demo (the solver plays chamber 1
@@ -110,9 +110,9 @@ try {
     const b = document.getElementById('btn-play');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Play');
   }));
-  check('no version text on the player-facing menu', !/v0\.1\.0|0\.1\.0/.test(menuText), menuText.slice(0, 200));
+  check('no version text on the player-facing menu', !/v0\.2\.0|0\.2\.0/.test(menuText), menuText.slice(0, 200));
   check('no engine text on the player-facing menu', !/three\.js|canvas 2d|webgl/i.test(menuText));
-  check('menu lists 3 chambers', await page.evaluate(() => window.__prism.chambers().length === 3));
+  check('menu lists 12 chambers', await page.evaluate(() => window.__prism.chambers().length === 12));
   const demo1 = await page.evaluate(() => window.__prism.info());
   check('live demo beam exists behind the menu', demo1.beamSegments > 0, JSON.stringify(demo1));
   await page.waitForTimeout(4000);
@@ -127,8 +127,8 @@ try {
   await page.click('#btn-chambers');
   await page.waitForFunction(() => !document.getElementById('chambers').classList.contains('hidden'), null, { timeout: 5000 });
   await page.waitForTimeout(2500);
-  check('chamber select shows 3 chamber cards', await page.evaluate(() => document.querySelectorAll('#chamber-grid .level-card').length === 3));
-  check('chamber 1 unlocked, chambers 2-3 locked on a fresh save', await page.evaluate(() => {
+  check('chamber select shows 12 chamber cards', await page.evaluate(() => document.querySelectorAll('#chamber-grid .level-card').length === 12));
+  check('chamber 1 unlocked, chambers 2-12 locked on a fresh save', await page.evaluate(() => {
     const cards = [...document.querySelectorAll('#chamber-grid .level-card')];
     return !cards[0].disabled && cards.slice(1).every((c) => c.disabled);
   }));
@@ -214,6 +214,39 @@ try {
   await page3.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'chamber3-1280x720.png') });
   console.log('render-check: chamber 3 shot captured');
   await context3.close();
+
+  // --- mid + late chambers (M2 spread) --------------------------------------
+  const context4 = await browser.newContext({ viewport: { width: 1280, height: 720 }, timezoneId: 'Asia/Bangkok' });
+  const page4 = await context4.newPage();
+  page4.on('console', (msg) => { if (msg.type() === 'error') errors.push(`chamber6 console: ${msg.text()}`); });
+  page4.on('pageerror', (err) => errors.push(`chamber6 pageerror: ${String(err)}`));
+  await page4.goto(`http://127.0.0.1:${port}/?chamber=6`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page4.waitForFunction(() => window.__prism, null, { timeout: 30000 });
+  await page4.waitForFunction(() => window.__prism.state.phase === 'playing', null, { timeout: 5000 });
+  check('?chamber=6 jumps straight into chamber 6', await page4.evaluate(() => window.__prism.state.chamberId === 6));
+  await page4.evaluate(() => window.__prism.autopilot(true));
+  await page4.waitForFunction(() => window.__prism.state.phase === 'complete', null, { timeout: 90000 });
+  check('autopilot clears chamber 6 (mid spread)', await page4.evaluate(() => window.__prism.state.won === true));
+  await page4.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'chamber6-1280x720.png') });
+  console.log('render-check: chamber 6 shot captured');
+  await context4.close();
+
+  const context5 = await browser.newContext({ viewport: { width: 1280, height: 720 }, timezoneId: 'Asia/Bangkok' });
+  const page5 = await context5.newPage();
+  page5.on('console', (msg) => { if (msg.type() === 'error') errors.push(`chamber12 console: ${msg.text()}`); });
+  page5.on('pageerror', (err) => errors.push(`chamber12 pageerror: ${String(err)}`));
+  await page5.goto(`http://127.0.0.1:${port}/?chamber=12`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page5.waitForFunction(() => window.__prism, null, { timeout: 30000 });
+  await page5.waitForFunction(() => window.__prism.state.phase === 'playing', null, { timeout: 5000 });
+  check('?chamber=12 jumps straight into chamber 12', await page5.evaluate(() => window.__prism.state.chamberId === 12));
+  const c12 = await page5.evaluate(() => window.__prism.info());
+  check('chamber 12 beam traces with 3 receptors', c12.beamSegments > 0 && c12.total === 3, JSON.stringify(c12));
+  await page5.evaluate(() => window.__prism.autopilot(true));
+  await page5.waitForFunction(() => window.__prism.state.phase === 'complete', null, { timeout: 120000 });
+  check('autopilot clears chamber 12 (late spread)', await page5.evaluate(() => window.__prism.state.won === true));
+  await page5.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'chamber12-1280x720.png') });
+  console.log('render-check: chamber 12 shot captured');
+  await context5.close();
 
   // --- toggles + FPS guard ----------------------------------------------------
   const contextG = await browser.newContext({ viewport: { width: 1280, height: 720 }, timezoneId: 'Asia/Bangkok' });
