@@ -23,8 +23,15 @@ A 2D neon laser-mirror puzzle. Rotate mirrors to steer a laser beam through pris
 | 1 | First Light | 1 | 2 | 3 |
 | 2 | Crossbeam | 2 | 3 | 4 |
 | 3 | Prism Split | 2 | 4 | 5 |
-
-More chambers arrive as the sprint continues (12 planned).
+| 4 | Serpent | 1 | 5 | 6 |
+| 5 | Twin Branches | 2 | 6 | 7 |
+| 6 | The Gauntlet | 2 | 7 | 8 |
+| 7 | Prism Crossfire | 2 | 8 | 9 |
+| 8 | Switchback | 2 | 9 | 10 |
+| 9 | The Circuit | 2 | 10 | 11 |
+| 10 | Serpent King | 2 | 11 | 12 |
+| 11 | Triple Split | 3 | 12 | 13 |
+| 12 | Void Crown | 3 | 13 | 14 |
 
 ## Tech
 

@@ -1,4 +1,4 @@
-// Neon Prism v0.1.0 — game shell (Canvas 2D rendering, screens, feel).
+// Neon Prism v0.2.0 — game shell (Canvas 2D rendering, screens, feel).
 // Pure sim lives in physics.js; this file owns presentation + input.
 import {
   VERSION, CHAMBERS, chamberById, startRun, rotateMirror,
@@ -108,6 +108,7 @@ const state = {
   demoChamber: 1,
   demoTimer: 0,
   selected: 0,
+  kbSelect: false, // selection box shows only after keyboard input (M1 playtest: a default box on mirror 0 was a soft hint)
   autopilot: false,
   autopilotTimer: 0,
   autopilotPath: [],
@@ -193,6 +194,7 @@ function startChamber(id) {
   state.done = false;
   state.won = false;
   state.selected = 0;
+  state.kbSelect = false;
   state.autopilotPath = [];
   state.autopilotTimer = 0;
   feel.mirrorAnim.clear();
@@ -334,16 +336,19 @@ window.addEventListener('keydown', (ev) => {
     const rot = state.run.chamber.mirrors.map((m, i) => (m.fixed ? -1 : i)).filter((i) => i >= 0);
     if (k === 'Tab' || k === 'ArrowRight' || k === 'ArrowDown') {
       ev.preventDefault();
+      state.kbSelect = true;
       const pos = rot.indexOf(state.selected);
       state.selected = rot[(pos + 1) % rot.length];
       sfx.tick();
     } else if (k === 'ArrowLeft' || k === 'ArrowUp') {
       ev.preventDefault();
+      state.kbSelect = true;
       const pos = rot.indexOf(state.selected);
       state.selected = rot[(pos - 1 + rot.length) % rot.length];
       sfx.tick();
     } else if (k === ' ' || k === 'Enter') {
       ev.preventDefault();
+      state.kbSelect = true;
       tryRotate(state.selected);
     }
   } else if (state.phase === 'pause' && (k === 'p' || k === 'P' || k === 'Escape' || k === 'Enter')) {
@@ -530,7 +535,7 @@ function draw(run, dt) {
       const to = anim.to === '/' ? -Math.PI / 4 : Math.PI / 4;
       ang = from + (to - from) * Math.min(1, anim.t / 0.18);
     }
-    if (state.phase === 'playing' && state.selected === i) {
+    if (state.phase === 'playing' && state.kbSelect && state.selected === i) {
       ctx.strokeStyle = '#ffd23d';
       ctx.lineWidth = 2;
       ctx.strokeRect(px(m.x) + 3, py(m.y) + 3, cell - 6, cell - 6);
