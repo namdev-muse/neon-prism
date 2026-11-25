@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Prism — 2D Neon Laser-Mirror Puzzle</title>
+<meta name="description" content="Neon Prism — rotate mirrors to steer a laser beam through prisms and light every receptor.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game" width="1280" height="720"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="hud-left">
+    <div id="hud-chamber">Chamber 1</div>
+    <div id="hud-receptors">Receptors 0/1</div>
+  </div>
+  <div class="hud-center">
+    <div id="hud-moves">Moves left 3</div>
+    <div id="hud-moves-bar"><div id="hud-moves-fill"></div></div>
+  </div>
+  <div class="hud-right">
+    <div id="hud-score">Score 0</div>
+    <button id="btn-pause" type="button">Pause</button>
+  </div>
+  <div id="hud-toast" class="hidden" role="status"></div>
+</div>
+
+<div id="menu" class="screen">
+  <div class="panel">
+    <h1 class="title">NEON <span>PRISM</span></h1>
+    <p class="tagline">Rotate the mirrors. Route the beam. Light every receptor.</p>
+    <button id="btn-play" class="primary" type="button">Play</button>
+    <button id="btn-chambers" type="button">Chambers</button>
+    <button id="btn-howto" type="button">How to Play</button>
+    <button id="btn-settings" type="button">Settings</button>
+    <p id="menu-best" class="note"></p>
+  </div>
+</div>
+
+<div id="chambers" class="screen hidden">
+  <div class="panel wide">
+    <h2>Chambers</h2>
+    <div id="chamber-grid"></div>
+    <button id="btn-chambers-back" type="button">Back</button>
+  </div>
+</div>
+
+<div id="howto" class="screen hidden">
+  <div class="panel wide">
+    <h2>How to Play</h2>
+    <p>Tap or click a <strong>mirror</strong> to rotate it. Mirrors bend the laser beam 90 degrees.</p>
+    <p><strong>Prisms</strong> split the beam in two — straight on, and turned. <strong>Walls</strong> stop the beam.</p>
+    <p>Light <strong>every receptor</strong> at the same time to clear the chamber. Each rotation costs a move — run out of moves and the chamber fails.</p>
+    <p>Keyboard: arrows or Tab select a mirror, Space rotates, R resets, P pauses, M mutes.</p>
+    <button id="btn-howto-back" type="button">Back</button>
+  </div>
+</div>
+
+<div id="settings" class="screen hidden">
+  <div class="panel wide">
+    <h2>Settings</h2>
+    <label>Volume <input id="set-volume" type="range" min="0" max="100" value="80"></label>
+    <label>Screen shake <input id="set-shake" type="range" min="0" max="100" value="100"></label>
+    <label><input id="set-music" type="checkbox" checked> Music</label>
+    <label><input id="set-sfx" type="checkbox" checked> Sound effects</label>
+    <label><input id="set-flash" type="checkbox" checked> Flashing effects</label>
+    <label><input id="set-textlarge" type="checkbox"> Large text</label>
+    <label><input id="set-contrast" type="checkbox"> High contrast</label>
+    <p id="perf-readout" class="note"></p>
+    <button id="btn-settings-back" type="button">Back</button>
+  </div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <div class="panel">
+    <h2>Paused</h2>
+    <button id="btn-resume" class="primary" type="button">Resume</button>
+    <button id="btn-restart" type="button">Restart Chamber</button>
+    <button id="btn-quit" type="button">Quit to Menu</button>
+  </div>
+</div>
+
+<div id="complete" class="screen hidden">
+  <div class="panel">
+    <h2>Chamber Clear</h2>
+    <p id="complete-rank">RANK S</p>
+    <p id="complete-score">Score 0</p>
+    <p id="complete-detail" class="note"></p>
+    <p class="complete-ranks note">S at par moves, A within 2 of par</p>
+    <button id="btn-next" class="primary" type="button">Next Chamber</button>
+    <button id="btn-complete-menu" type="button">Menu</button>
+  </div>
+</div>
+
+<div id="gameover" class="screen hidden">
+  <div class="panel">
+    <h2>Out of Moves</h2>
+    <p id="gameover-detail" class="note"></p>
+    <button id="btn-retry" class="primary" type="button">Try Again</button>
+    <button id="btn-gameover-menu" type="button">Menu</button>
+  </div>
+</div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>
