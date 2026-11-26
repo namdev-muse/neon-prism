@@ -1,5 +1,15 @@
 # Neon Prism — Devlog
 
+## v0.3.0 — M3 Feel & Juice (2026-11-26)
+
+- Every event now fires its full feedback bundle in the same frame as the input: rotate-snap (sound + sparks at the mirror + micro-shake), beam-block sparks where each beam head dies at a wall or the chamber edge (the sim now reports beam endpoints), receptor-lit (sound + shake + burst + LIT pop), solve (hit-stop + slow-mo + flash + zoom + gold shockwave ring + per-receptor bursts + the score as a number pop), budget-fail (lose sting + heavy shake + red flash + endpoint sparks + partial-score pop). Cumulative fx counters in the test hook assert no event can silently go dead.
+- Ambient beam sparks: a cheap trickle of sparks drifts off the live beam so it reads as energy, not a static line (hard-capped particle pool — no per-frame allocation growth).
+- MOVES meter: the budget bar now turns magenta on the last move, so the final decision reads at a glance.
+- Generative music lifts proportionally with receptors lit: base octave, +1 octave with one lit, +2 with two or more.
+- Complete screen names the score parts (Clear 1000 + Efficiency + Time = total) — the sim now stores the breakdown per run.
+- Fix from the M2 playtest: clearing chamber 12 no longer shows a disabled primary button labelled "All Chambers Clear" (a dead-button look). The title carries the message and the Next button is hidden.
+- Verification: smoke 129/129 (adds endpoint + score-parts checks), bot gates all pass on 12 chambers, render check PASS (adds rotate/block/lit/solve/fail bundle assertions, music-lift, low-meter and last-chamber screen checks), size sweep inspected by eye at 1280x720 / 2560x1080 / 1080x2340.
+
 ## v0.2.0 — M2 Chamber Craft (2026-11-26)
 
 - 12 hand-crafted chambers with a real difficulty curve: solver pars strictly increase 2 → 13 (First Light … Void Crown), each with its own shape, mirror/prism layout, receptor count and budget (par + 1). New chambers: Serpent, Twin Branches, The Gauntlet, Prism Crossfire, Switchback, The Circuit, Serpent King, Triple Split (two prisms, three branches), Void Crown.
