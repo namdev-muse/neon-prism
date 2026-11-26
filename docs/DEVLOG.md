@@ -1,5 +1,14 @@
 # Neon Prism — Devlog
 
+## v0.5.0 — M5 Polish & Robustness (2026-11-26)
+
+- **HUD readability pass**: each HUD cluster (chamber/receptors, moves meter, score/Pause) now sits on a pill backdrop so text stays legible over the bright beam, with more top breathing room and tabular numbers. The HUD shows current chamber state only — a render-check assertion now proves the moves counter resets to the full budget on restart (no stale max).
+- **Portrait framing**: a nebula glow + deterministic starfield now fills the whole canvas so letterbox bands (portrait top/bottom, ultrawide sides) read as sky, not dead space (Surge M5 pattern). Portrait layout trims side padding to grow the cells and centres the chamber below the HUD. Eye-check caught the portrait toast covering the Pause button — it now sits below the stacked HUD pills.
+- **Settings fixes**: checkbox labels keep box + text together (they used to be pushed to opposite edges); the performance readout is live at all times (`60 fps · render scale 2x`, plus `FPS guard active` when the guard fires).
+- **Score pop fix** (M3/M4 carry-over): the `+score` pop rose from chamber centre, hidden behind the complete panel. It now rises from the top third and the panel waits 1500ms so the number reads first.
+- **Accessibility asserted**: the render check now proves the shake slider gates the actual shake amplitude (0 while trauma is live, live again at 100%), large-text and high-contrast toggles apply their body classes and persist, and the FPS guard steps the render scale down on demand (2x → 1x backing store).
+- Verification: smoke 140/140, bot gates all pass, render check PASS (adds shake-gate, text/contrast, HUD-reset, perf-readout and portrait-layout assertions), size sweep inspected by eye at 1280x720 / 2560x1080 / 1080x2340 plus settings, complete and stacked-portrait shots.
+
 ## v0.4.0 — M4 Progression & Depth (2026-11-26)
 
 - **Endless Lattice mode**: seeded chambers that scale as you climb. Each chamber is generated backward from a solution — lay a beam path (mirrors at the bends, a prism branch from depth 3, receptors on the path), dress it with decoy mirrors and off-path walls, then flip exactly `par` path mirrors to make the starting state. Every candidate is verified before it ships to the player: solver par must equal the scramble count (no shortcuts), the start must be unsolved, and a random-rotate bot must rarely win. Par scales 2 → 13 with depth; budget is always par + 1. Clear to climb; one budget fail ends the run and banks the best streak + lattice score. Deterministic in (seed, depth) — `?endless=SEED` is the playtest path.
