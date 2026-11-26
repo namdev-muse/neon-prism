@@ -13,7 +13,8 @@ A 2D neon laser-mirror puzzle. Rotate mirrors to steer a laser beam through pris
 - **Prisms** split the beam in two — straight on, and turned clockwise.
 - **Walls** stop the beam. **Receptors** light when the beam passes through them.
 - Light **every receptor at once** to clear the chamber. Each rotation costs a move — run out and the chamber fails.
-- Score rewards clearing, move efficiency, and speed. Best score and rank (S/A/B) are saved per chamber.
+- Score rewards clearing, move efficiency, and speed — the clear screen breaks the total down (Clear + Efficiency + Time). Best score and rank (S/A/B) are saved per chamber.
+- Every rotation snaps with sparks and a micro-shake; the beam throws sparks where it dies on a wall; lighting a receptor lifts the generative music an octave.
 - Keyboard: arrows or Tab select a mirror, Space rotates, R resets, P pauses, M mutes. Touch: tap mirrors directly.
 
 ## Chambers

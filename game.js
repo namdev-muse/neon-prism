@@ -1,4 +1,4 @@
-// Neon Prism v0.2.0 — game shell (Canvas 2D rendering, screens, feel).
+// Neon Prism v0.3.0 — game shell (Canvas 2D rendering, screens, feel).
 // Pure sim lives in physics.js; this file owns presentation + input.
 import {
   VERSION, CHAMBERS, chamberById, startRun, rotateMirror,
@@ -69,10 +69,16 @@ const sfx = {
   lose() { tone(220, 0.3, 'sawtooth', 0.18); tone(147, 0.4, 'sawtooth', 0.16, 0.12); },
 };
 const CHORDS = [[220, 261.6, 329.6], [174.6, 220, 261.6], [130.8, 164.8, 196], [196, 246.9, 293.7]];
+function musicLift() {
+  // Generative music lifts with receptors lit: base octave, +1 octave
+  // with one lit, +2 octaves with two or more (M3 feel pass).
+  const lit = state.run ? state.run.trace.litCount : 0;
+  return lit === 0 ? 1 : lit === 1 ? 2 : 4;
+}
 function musicTick() {
   if (!audioCtx || !save.settings.music || save.settings.muted) return;
   const chord = CHORDS[Math.floor(musicStep / 4) % CHORDS.length];
-  const lift = state.run && state.run.trace.litCount > 0 ? 2 : 1;
+  const lift = musicLift();
   const note = chord[musicStep % chord.length] * lift;
   const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
@@ -118,9 +124,13 @@ const state = {
 };
 const feel = {
   trauma: 0, timeScale: 1, slowMoT: 0, hitStopT: 0,
-  flashT: 0, flashMax: 0, zoomT: 0,
+  flashT: 0, flashMax: 0, flashColor: '255,255,255', zoomT: 0,
   particles: [], pops: [], shockwaves: [],
   mirrorAnim: new Map(), // index -> { t, from, to }
+  // Cumulative feedback-bundle counters (M3): every game event fires its
+  // bundle within the same frame as the input; the render check asserts
+  // these move so no event can silently go dead.
+  fxCounts: { rotate: 0, lit: 0, solve: 0, fail: 0, block: 0, denied: 0 },
 };
 let dprCap = 2;
 let fpsLowT = 0;
@@ -219,30 +229,56 @@ function endRun() {
     }
     if (run.chamber.id >= save.unlocked) save.unlocked = Math.min(CHAMBERS.length, run.chamber.id + 1);
     persist();
+    // Solve bundle (M3): hit-stop + slow-mo + flash + zoom + shockwave
+    // ring + gold bursts on every receptor + the score as a number pop.
+    feel.fxCounts.solve++;
     sfx.win();
     feel.hitStopT = 0.12;
     feel.slowMoT = 0.5;
+    feel.flashColor = '255,255,255';
     feel.flashT = save.settings.flash ? 0.4 : 0;
     feel.flashMax = 0.4;
     feel.zoomT = 0.4;
+    feel.shockwaves.push({ x: run.chamber.cols / 2, y: run.chamber.rows / 2, t: 0, life: 0.6 });
+    for (const r of run.chamber.receptors) burst(r.x + 0.5, r.y + 0.5, '#ffd23d', 16);
     burst(run.chamber.cols / 2, run.chamber.rows / 2, '#ffd23d', 40);
+    feel.pops.push({ x: run.chamber.cols / 2, y: run.chamber.rows / 2 - 0.5, text: '+' + run.score, t: 0 });
     setTimeout(() => {
       if (state.phase !== 'playing') return;
       state.phase = 'complete';
+      const isLast = run.chamber.id >= CHAMBERS.length;
+      $('complete-title').textContent = isLast ? 'All Chambers Clear' : 'Chamber Clear';
       $('complete-rank').textContent = 'RANK ' + rankFor(run);
       $('complete-score').textContent = 'Score ' + run.score;
       $('complete-detail').textContent = `${run.chamber.name} cleared in ${run.moves} moves (par ${run.chamber.parMoves})`;
-      $('btn-next').disabled = run.chamber.id >= CHAMBERS.length;
-      $('btn-next').textContent = run.chamber.id >= CHAMBERS.length ? 'All Chambers Clear' : 'Next Chamber';
+      const parts = run.scoreParts;
+      $('complete-parts').textContent = parts
+        ? `Clear ${parts.clear} + Efficiency ${parts.efficiency} + Time ${parts.time} = ${run.score}`
+        : '';
+      // M2 carry-over: the last chamber used to show a disabled primary
+      // button labelled "All Chambers Clear" — a dead-button look. Hide
+      // it; the title carries the message and Menu is the action.
+      $('btn-next').classList.toggle('hidden', isLast);
+      $('btn-next').disabled = isLast;
+      $('btn-next').textContent = 'Next Chamber';
       showScreen('complete');
+      if (isLast) $('btn-complete-menu').focus();
     }, 900);
   } else {
+    // Budget-fail bundle (M3): lose sting + heavy shake + red flash +
+    // endpoint sparks + the partial score as a number pop.
+    feel.fxCounts.fail++;
     sfx.lose();
     feel.trauma = Math.min(1, feel.trauma + 0.6);
+    feel.flashColor = '255,60,60';
+    feel.flashT = save.settings.flash ? 0.35 : 0;
+    feel.flashMax = 0.35;
+    for (const ep of run.trace.endpoints) burst(ep.x + 0.5, ep.y + 0.5, '#ff3df0', 6);
+    if (run.score > 0) feel.pops.push({ x: run.chamber.cols / 2, y: run.chamber.rows / 2 - 0.5, text: '+' + run.score, t: 0 });
     setTimeout(() => {
       if (state.phase !== 'playing') return;
       state.phase = 'gameover';
-      $('gameover-detail').textContent = `${run.chamber.name}: ${run.trace.litCount}/${run.trace.total} receptors lit in ${run.moves} moves.`;
+      $('gameover-detail').textContent = `${run.chamber.name}: ${run.trace.litCount}/${run.trace.total} receptors lit in ${run.moves} moves. Score ${run.score}.`;
       showScreen('gameover');
     }, 700);
   }
@@ -263,7 +299,10 @@ function updateHud() {
   $('hud-receptors').textContent = `Receptors ${run.trace.litCount}/${run.trace.total}`;
   const left = run.chamber.budget - run.moves;
   $('hud-moves').textContent = `Moves left ${left}`;
-  $('hud-moves-fill').style.width = `${Math.max(0, (left / run.chamber.budget) * 100)}%`;
+  const fill = $('hud-moves-fill');
+  fill.style.width = `${Math.max(0, (left / run.chamber.budget) * 100)}%`;
+  // MOVES meter low state (M3): the last move reads magenta, not gold.
+  fill.classList.toggle('low', left <= 1);
   $('hud-score').textContent = `Score ${run.score}`;
 }
 
@@ -287,15 +326,30 @@ function tryRotate(index) {
   const from = run.orients[index];
   const ok = rotateMirror(run, index);
   if (!ok) {
+    feel.fxCounts.denied++;
     sfx.denied();
     if (run.deniedReason === 'fixed') toast('Fixed mirror — it cannot rotate.');
     else if (run.deniedReason === 'budget') toast('No moves left.');
     return false;
   }
+  // Rotate-snap bundle (M3): sound + sparks at the mirror + micro-shake,
+  // all in the same frame as the tap.
+  feel.fxCounts.rotate++;
   feel.mirrorAnim.set(index, { t: 0, from, to: run.orients[index] });
   sfx.rotate();
+  const m = run.chamber.mirrors[index];
+  burst(m.x + 0.5, m.y + 0.5, '#22e6ff', 8);
+  feel.trauma = Math.min(1, feel.trauma + 0.08);
+  // Beam-block bundle (M3): sparks where each beam head dies at a wall
+  // or the chamber edge, so a wrong bend reads instantly.
+  for (const ep of run.trace.endpoints) {
+    burst(ep.x + 0.5, ep.y + 0.5, '#7df2ff', 3);
+    feel.fxCounts.block++;
+  }
   if (run.lastLit) {
+    feel.fxCounts.lit++;
     sfx.lit();
+    feel.trauma = Math.min(1, feel.trauma + 0.1);
     toast(`Receptor lit — ${run.lastLit.count}/${run.lastLit.total}`);
     const r = run.chamber.receptors[run.lastLit.index];
     burst(r.x + 0.5, r.y + 0.5, '#ff3df0', 18);
@@ -570,6 +624,18 @@ function draw(run, dt) {
     }
   });
 
+  // Shockwave rings (grid space, M3 solve bundle).
+  for (const s of feel.shockwaves) {
+    const k = s.t / s.life;
+    ctx.globalAlpha = Math.max(0, 1 - k) * 0.8;
+    ctx.strokeStyle = '#ffd23d';
+    ctx.lineWidth = Math.max(1, cell * 0.08 * (1 - k));
+    ctx.beginPath();
+    ctx.arc(px(s.x), py(s.y), k * cell * 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
   // Particles (grid space).
   for (const p of feel.particles) {
     ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
@@ -591,7 +657,7 @@ function draw(run, dt) {
 
   // Flash overlay.
   if (feel.flashT > 0 && save.settings.flash) {
-    ctx.fillStyle = `rgba(255,255,255,${(feel.flashT / Math.max(0.01, feel.flashMax)) * 0.35})`;
+    ctx.fillStyle = `rgba(${feel.flashColor},${(feel.flashT / Math.max(0.01, feel.flashMax)) * 0.35})`;
     ctx.fillRect(0, 0, W, H);
   }
 }
@@ -633,6 +699,25 @@ function frame(now) {
   for (let i = feel.pops.length - 1; i >= 0; i--) {
     feel.pops[i].t += rawDt;
     if (feel.pops[i].t >= 0.9) feel.pops.splice(i, 1);
+  }
+  for (let i = feel.shockwaves.length - 1; i >= 0; i--) {
+    feel.shockwaves[i].t += rawDt;
+    if (feel.shockwaves[i].t >= feel.shockwaves[i].life) feel.shockwaves.splice(i, 1);
+  }
+  // Ambient beam sparks (M3): a slow trickle of sparks drifting off the
+  // live beam so it reads as energy, not a static line. Kept cheap —
+  // one particle on ~40% of frames, hard-capped by burst()'s pool cap.
+  const sparkRun = state.phase === 'playing' ? state.run : state.demoRun;
+  if (sparkRun && sparkRun.trace.segments.length > 0 && Math.random() < 0.4) {
+    const segs = sparkRun.trace.segments;
+    const s = segs[Math.floor(Math.random() * segs.length)];
+    const f = Math.random();
+    feel.particles.push({
+      x: s.x1 + 0.5 + (s.x2 - s.x1) * f, y: s.y1 + 0.5 + (s.y2 - s.y1) * f,
+      vx: (Math.random() - 0.5) * 0.6, vy: (Math.random() - 0.5) * 0.6,
+      t: 0, life: 0.25 + Math.random() * 0.25, color: '#7df2ff',
+    });
+    if (feel.particles.length > 400) feel.particles.splice(0, feel.particles.length - 400);
   }
 
   const dt = rawDt * feel.timeScale;
@@ -730,8 +815,9 @@ window.__prism = {
     shakeSetting: save.settings.shake,
     shakeAmp: feel.trauma * feel.trauma * 14 * save.settings.shake,
     flashEnabled: save.settings.flash,
+    fxCounts: { ...feel.fxCounts },
   }),
-  audio: () => ({ ...audioState, musicOn: save.settings.music }),
+  audio: () => ({ ...audioState, musicOn: save.settings.music, lift: musicLift() }),
   startChamber,
   rotateAt: (x, y) => {
     if (!state.run) return false;

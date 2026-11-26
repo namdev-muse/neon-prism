@@ -1,4 +1,4 @@
-// Neon Prism v0.2.0 — pure simulation core (no DOM, no Canvas).
+// Neon Prism v0.3.0 — pure simulation core (no DOM, no Canvas).
 //
 // A 2D neon laser-mirror puzzle: an emitter fires a beam across a grid
 // chamber. Mirrors bend the beam 90 degrees, prisms split it in two,
@@ -20,7 +20,7 @@
 // Deterministic: chambers are hand-built from fixed numbers; the trace
 // and the solver give identical results for identical inputs.
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export const DIRS = {
   E: { x: 1, y: 0 },
@@ -378,6 +378,7 @@ export function traceBeam(chamber, orients) {
   const receptorAt = new Map(chamber.receptors.map((r, i) => [r.x + ',' + r.y, i]));
 
   const segments = [];
+  const endpoints = []; // last in-bounds cell of each stopped head (wall/edge) — the game sparks here (beam-block feedback)
   const lit = new Set();
   const visited = new Set();
   const heads = [{ x: chamber.emitter.x, y: chamber.emitter.y, dir: chamber.emitter.dir }];
@@ -394,11 +395,13 @@ export function traceBeam(chamber, orients) {
       const ny = y + d.y;
       if (nx < 0 || nx >= chamber.cols || ny < 0 || ny >= chamber.rows) {
         segments.push({ x1: x, y1: y, x2: nx, y2: ny, dir });
+        endpoints.push({ x, y, dir, kind: 'edge' });
         break;
       }
       const k = nx + ',' + ny;
       if (wallSet.has(k)) {
         segments.push({ x1: x, y1: y, x2: nx, y2: ny, dir });
+        endpoints.push({ x, y, dir, kind: 'wall' });
         break;
       }
       segments.push({ x1: x, y1: y, x2: nx, y2: ny, dir });
@@ -415,7 +418,7 @@ export function traceBeam(chamber, orients) {
       }
     }
   }
-  return { segments, lit, litCount: lit.size, total: chamber.receptors.length, solved: lit.size === chamber.receptors.length };
+  return { segments, endpoints, lit, litCount: lit.size, total: chamber.receptors.length, solved: lit.size === chamber.receptors.length };
 }
 
 // ---------------------------------------------------------------- run state
@@ -433,6 +436,7 @@ export function createRun(chamber) {
     deniedReason: null, // why the last input failed ('fixed' | 'budget' | 'none') — read by the game for the post-action cue
     lastLit: null, // { index, count, total } — the receptor the game should announce
     score: 0,
+    scoreParts: null, // { clear, efficiency, time } on a win, { lit } on a loss — named on the complete screen (M2 carry-over)
   };
 }
 
@@ -446,8 +450,10 @@ export function finishScore(run) {
   if (run.phase === 'won') {
     const eff = Math.max(0, run.chamber.budget - run.moves) * 100;
     const timeBonus = Math.max(0, Math.round((run.chamber.parTime - run.time) * 10));
+    run.scoreParts = { clear: 1000, efficiency: eff, time: timeBonus };
     run.score = 1000 + eff + timeBonus;
   } else {
+    run.scoreParts = { lit: run.trace.litCount * 100 };
     run.score = run.trace.litCount * 100;
   }
   return run.score;

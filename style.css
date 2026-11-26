@@ -37,6 +37,7 @@ body.high-contrast { --panel: #000; --text: #fff; --muted: #e8f2ff; }
 .hud-center { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 180px; }
 #hud-moves-bar { width: 180px; height: 10px; background: rgba(255,255,255,0.15); border: 1px solid var(--cyan); border-radius: 5px; overflow: hidden; }
 #hud-moves-fill { height: 100%; width: 100%; background: var(--gold); transition: width 0.15s; }
+#hud-moves-fill.low { background: var(--magenta); }
 #hud-toast {
   position: fixed; left: 50%; top: 84px; transform: translateX(-50%);
   background: var(--panel); border: 1px solid var(--gold); color: var(--gold);
