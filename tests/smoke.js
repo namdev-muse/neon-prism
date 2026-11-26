@@ -1,4 +1,4 @@
-// Neon Prism v0.2.0 — smoke tests for the pure sim (physics.js).
+// Neon Prism v0.3.0 — smoke tests for the pure sim (physics.js).
 // Run: node tests/smoke.js
 import {
   VERSION, CHAMBERS, chamberById, traceBeam, createRun, startRun,
@@ -125,6 +125,25 @@ for (const c of CHAMBERS) {
   const b = traceBeam(c, c.mirrors.map((m) => m.orient));
   check('trace is deterministic', JSON.stringify(a.segments) === JSON.stringify(b.segments) && a.litCount === b.litCount);
   check('startRun rejects unknown chamber', startRun(999) === null);
+}
+
+{
+  // M3 feel data: every trace reports where beam heads die (beam-block
+  // sparks), and a finished run names its score parts.
+  for (const c of CHAMBERS) {
+    const t = traceBeam(c, c.mirrors.map((m) => m.orient));
+    check(`chamber ${c.id}: trace reports beam endpoints`, Array.isArray(t.endpoints) && t.endpoints.length > 0);
+    check(`chamber ${c.id}: endpoints are in-bounds cells`, t.endpoints.every((e) => e.x >= 0 && e.x < c.cols && e.y >= 0 && e.y < c.rows));
+  }
+  const run = startRun(1);
+  const sol = solve(run.chamber);
+  for (const i of sol.path) rotateMirror(run, i);
+  check('won run names its score parts', run.phase === 'won' && run.scoreParts && run.scoreParts.clear === 1000);
+  check('score parts sum to the score', run.scoreParts.clear + run.scoreParts.efficiency + run.scoreParts.time === run.score,
+    JSON.stringify(run.scoreParts) + ' vs ' + run.score);
+  const lost = startRun(1);
+  rotateMirror(lost, 2); rotateMirror(lost, 3); rotateMirror(lost, 4);
+  check('lost run names its lit-only score part', lost.phase === 'lost' && lost.scoreParts && lost.scoreParts.lit === lost.score);
 }
 
 console.log(`smoke: ${passed}/${passed + failed} passed`);

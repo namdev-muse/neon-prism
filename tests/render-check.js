@@ -1,4 +1,4 @@
-// Neon Prism v0.2.0 — headless browser render check.
+// Neon Prism v0.3.0 — headless browser render check.
 // Serves the game dir over local HTTP, loads it in a headless browser, and
 // asserts the M1 core, by hook and by eye:
 //   - the menu renders over a LIVE demo (the solver plays chamber 1
@@ -110,7 +110,7 @@ try {
     const b = document.getElementById('btn-play');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Play');
   }));
-  check('no version text on the player-facing menu', !/v0\.2\.0|0\.2\.0/.test(menuText), menuText.slice(0, 200));
+  check('no version text on the player-facing menu', !/v0\.3\.0|0\.3\.0/.test(menuText), menuText.slice(0, 200));
   check('no engine text on the player-facing menu', !/three\.js|canvas 2d|webgl/i.test(menuText));
   check('menu lists 12 chambers', await page.evaluate(() => window.__prism.chambers().length === 12));
   const demo1 = await page.evaluate(() => window.__prism.info());
@@ -152,6 +152,18 @@ try {
     `(${tip0.x.toFixed(0)},${tip0.y.toFixed(0)}) -> (${tip1.x.toFixed(0)},${tip1.y.toFixed(0)})`);
   check('HUD moves counter follows the rotation', await page.evaluate(() =>
     document.getElementById('hud-moves').textContent.includes('Moves left 2')));
+  // M3: the rotate fires its feedback bundle in the same frame —
+  // rotate-snap sparks at the mirror + beam-block sparks at the wall.
+  const fx1 = await page.evaluate(() => window.__prism.feel());
+  check('M3 rotate bundle fired (rotate + block counters, sparks alive)',
+    fx1.fxCounts.rotate >= 1 && fx1.fxCounts.block >= 1 && fx1.particlesAlive > 0, JSON.stringify(fx1.fxCounts));
+  check('M3 music lift is 1 with no receptors lit', await page.evaluate(() => window.__prism.audio().lift === 1));
+  // M3: MOVES meter low state on the last move.
+  await page.evaluate(() => window.__prism.rotateIndex(1));
+  await page.waitForTimeout(300);
+  check('M3 MOVES meter turns low on the last move', await page.evaluate(() =>
+    document.getElementById('hud-moves').textContent.includes('Moves left 1') &&
+    document.getElementById('hud-moves-fill').classList.contains('low')));
   // Restart fresh for the autopilot clear (the probe rotation spent a move).
   await page.evaluate(() => window.__prism.startChamber(1));
   await page.evaluate(() => window.__prism.autopilot(true));
@@ -161,6 +173,10 @@ try {
   const final = await page.evaluate(() => window.__prism.state);
   check('autopilot (solver bot) clears chamber 1 in the real browser', final.won === true && final.chamberId === 1, JSON.stringify(final));
   check('complete screen shows the score', await page.evaluate(() => /Score \d/.test(document.getElementById('complete-score').textContent)));
+  check('M3 solve bundle fired (solve counter)', await page.evaluate(() => window.__prism.feel().fxCounts.solve >= 1));
+  check('M3 complete screen names the score parts', await page.evaluate(() =>
+    /Clear 1000 \+ Efficiency \d+ \+ Time \d+ = \d+/.test(document.getElementById('complete-parts').textContent)),
+    await page.evaluate(() => document.getElementById('complete-parts').textContent));
   check('complete screen shows the clear rank badge', await page.evaluate(() =>
     /^RANK [SAB]$/.test(document.getElementById('complete-rank').textContent.trim())));
   check('best score is saved after the clear', await page.evaluate(() => {
@@ -195,6 +211,11 @@ try {
   // Denied cue: tapping an empty cell names the reason (never silence).
   const denied = await page2.evaluate(() => window.__prism.rotateAt(0, 0));
   check('rotateAt on an empty cell is denied', denied === false);
+  // M3 budget-fail bundle: waste the budget on decoys, the fail fires.
+  await page2.evaluate(() => { window.__prism.rotateIndex(2); window.__prism.rotateIndex(3); window.__prism.rotateIndex(4); });
+  await page2.waitForFunction(() => window.__prism.state.phase === 'gameover', null, { timeout: 10000 });
+  check('M3 budget-fail bundle fired (fail counter + game-over screen)',
+    await page2.evaluate(() => window.__prism.feel().fxCounts.fail >= 1 && !document.getElementById('gameover').classList.contains('hidden')));
   await context2.close();
 
   // --- ?chamber=3 playtest path ---------------------------------------------
@@ -209,6 +230,10 @@ try {
   const c3 = await page3.evaluate(() => window.__prism.info());
   check('chamber 3 beam traces through the prism (segments > 0)', c3.beamSegments > 0 && c3.total === 2, JSON.stringify(c3));
   await page3.evaluate(() => window.__prism.autopilot(true));
+  // M3: music lifts once a receptor lights (lift 2 with one, 4 with two).
+  await page3.waitForFunction(() => window.__prism.info().lit >= 1, null, { timeout: 30000 });
+  check('M3 music lifts with receptors lit', await page3.evaluate(() => window.__prism.audio().lift >= 2));
+  check('M3 receptor-lit bundle fired (lit counter)', await page3.evaluate(() => window.__prism.feel().fxCounts.lit >= 1));
   await page3.waitForFunction(() => window.__prism.state.phase === 'complete', null, { timeout: 60000 });
   check('autopilot clears chamber 3 (both prism branches lit)', await page3.evaluate(() => window.__prism.state.won === true));
   await page3.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'chamber3-1280x720.png') });
@@ -244,6 +269,11 @@ try {
   await page5.evaluate(() => window.__prism.autopilot(true));
   await page5.waitForFunction(() => window.__prism.state.phase === 'complete', null, { timeout: 120000 });
   check('autopilot clears chamber 12 (late spread)', await page5.evaluate(() => window.__prism.state.won === true));
+  // M2 carry-over fix: no disabled "All Chambers Clear" primary button —
+  // the title carries the message and Next is hidden.
+  check('M3 last-chamber complete screen hides Next, titles All Chambers Clear', await page5.evaluate(() =>
+    document.getElementById('btn-next').classList.contains('hidden') &&
+    document.getElementById('complete-title').textContent === 'All Chambers Clear'));
   await page5.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'chamber12-1280x720.png') });
   console.log('render-check: chamber 12 shot captured');
   await context5.close();
