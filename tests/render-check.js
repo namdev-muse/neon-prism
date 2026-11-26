@@ -1,4 +1,4 @@
-// Neon Prism v0.4.0 — headless browser render check.
+// Neon Prism v0.5.0 — headless browser render check.
 // Serves the game dir over local HTTP, loads it in a headless browser, and
 // asserts the M1 core, by hook and by eye:
 //   - the menu renders over a LIVE demo (the solver plays chamber 1
@@ -13,6 +13,9 @@
 //   - ?chamber=3 jumps straight into chamber 3 (the playtest path)
 //   - feel state returns to rest; shake/flash/music toggles work; the
 //     FPS guard drops the DPR cap to 1 on a 2x-DPI page
+//   - M5: shake slider gates amplitude, text-size/contrast toggles
+//     apply + persist, HUD resets on restart (no stale max), perf
+//     readout is live, portrait layout fits with HUD visible
 //   - zero console errors and zero page errors
 //
 // Run: node tests/render-check.js (Firefox by default; PW_BROWSER=chromium
@@ -110,7 +113,7 @@ try {
     const b = document.getElementById('btn-play');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Play');
   }));
-  check('no version text on the player-facing menu', !/v0\.4\.0|0\.4\.0/.test(menuText), menuText.slice(0, 200));
+  check('no version text on the player-facing menu', !/v0\.5\.0|0\.5\.0/.test(menuText), menuText.slice(0, 200));
   check('M4 menu has the Endless Lattice mode button', await page.evaluate(() => {
     const b = document.getElementById('btn-endless');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Endless Lattice');
@@ -349,6 +352,41 @@ try {
   await pageG.evaluate(() => window.__prism.setMusic(false));
   check('music toggle stops the loop', await pageG.evaluate(() => window.__prism.audio().musicPlaying === false));
   await pageG.evaluate(() => window.__prism.setMusic(true));
+  // M5 accessibility toggles asserted (Surge pattern): the shake slider
+  // gates the actual shake amplitude, text-size and contrast apply
+  // their body classes and persist, and they switch back off.
+  // Probe in the same evaluate: rotate trauma (0.08) decays in ~50ms,
+  // so a separate round-trip would read a settled 0 and prove nothing.
+  const shakeLive = await pageG.evaluate(() => { window.__prism.startChamber(1); window.__prism.rotateIndex(0); return window.__prism.feel(); });
+  check('M5 rotate leaves live trauma for the shake-gate probe', shakeLive.trauma > 0, JSON.stringify(shakeLive));
+  const noShake = await pageG.evaluate(() => { window.__prism.setShake(0); window.__prism.rotateIndex(1); return window.__prism.feel(); });
+  check('M5 shake slider at 0 gates the shake (amplitude 0 while trauma is live)',
+    noShake.shakeSetting === 0 && noShake.shakeAmp === 0 && noShake.trauma > 0, JSON.stringify(noShake));
+  const shakeBack = await pageG.evaluate(() => { window.__prism.setShake(1); window.__prism.rotateIndex(0); return window.__prism.feel(); });
+  check('M5 shake slider restores to 100% (amplitude live again)',
+    shakeBack.shakeSetting === 1 && shakeBack.shakeAmp > 0, JSON.stringify(shakeBack));
+  await pageG.evaluate(() => window.__prism.setTextSize('large'));
+  check('M5 large text applies the text-large body class and persists',
+    await pageG.evaluate(() => document.body.classList.contains('text-large') && window.__prism.save.settings.textSize === 'large'));
+  await pageG.evaluate(() => window.__prism.setContrast(true));
+  check('M5 high contrast applies the high-contrast body class and persists',
+    await pageG.evaluate(() => document.body.classList.contains('high-contrast') && window.__prism.save.settings.contrast === true));
+  await pageG.evaluate(() => { window.__prism.setTextSize('normal'); window.__prism.setContrast(false); });
+  check('M5 accessibility toggles switch back off',
+    await pageG.evaluate(() => !document.body.classList.contains('text-large') && !document.body.classList.contains('high-contrast')));
+  // M5 HUD shows current state only: after a restart the moves counter
+  // is back to the full budget, never a stale value from the last run.
+  await pageG.evaluate(() => window.__prism.startChamber(1));
+  check('M5 HUD resets to full moves on restart (no stale max)',
+    await pageG.evaluate(() => document.getElementById('hud-moves').textContent.includes('Moves left 3') &&
+      document.getElementById('hud-receptors').textContent.includes('Receptors 0/1')));
+  // M5 settings perf readout is live (fps + render scale).
+  await pageG.waitForTimeout(1200);
+  check('M5 perf readout names fps and render scale',
+    await pageG.evaluate(() => /\d+ fps · render scale [12]x/.test(document.getElementById('perf-readout').textContent)),
+    await pageG.evaluate(() => document.getElementById('perf-readout').textContent));
+  check('M5 fps hook reports the guard state',
+    await pageG.evaluate(() => { const f = window.__prism.fps(); return typeof f.fps === 'number' && f.dprCap === 2 && f.guardActive === false; }));
   const backingBefore = await pageG.evaluate(() => {
     Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
     window.dispatchEvent(new Event('resize'));
@@ -359,7 +397,30 @@ try {
   check('FPS guard drops the DPR cap to 1', await pageG.evaluate(() => window.__prism.dprCap === 1));
   const backingAfter = await pageG.evaluate(() => document.getElementById('game').width);
   check('canvas backing store shrinks to 1x after the guard', backingAfter === 1280, `canvas width=${backingAfter}`);
+  check('M5 perf readout names the active FPS guard',
+    await pageG.evaluate(() => document.getElementById('perf-readout').textContent.includes('FPS guard active') || window.__prism.fps().guardActive === true));
   await contextG.close();
+
+  // --- M5 portrait framing ----------------------------------------------------
+  const contextP = await browser.newContext({ viewport: { width: 540, height: 1170 }, timezoneId: 'Asia/Bangkok' });
+  const pageP = await contextP.newPage();
+  pageP.on('console', (msg) => { if (msg.type() === 'error') errors.push(`portrait console: ${msg.text()}`); });
+  pageP.on('pageerror', (err) => errors.push(`portrait pageerror: ${String(err)}`));
+  await pageP.goto(`http://127.0.0.1:${port}/?chamber=1`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await pageP.waitForFunction(() => window.__prism && window.__prism.state.phase === 'playing', null, { timeout: 30000 });
+  const portrait = await pageP.evaluate(() => window.__prism.info().layout);
+  check('M5 portrait layout is portrait-aware and the chamber fits the width',
+    portrait.portrait === true && portrait.ox >= 0 && portrait.ox + portrait.gw <= portrait.W + 2 && portrait.cell >= 30,
+    JSON.stringify(portrait));
+  check('M5 portrait HUD pills are visible (no clipped HUD)',
+    await pageP.evaluate(() => {
+      const hud = document.getElementById('hud');
+      const r = hud.getBoundingClientRect();
+      return !hud.classList.contains('hidden') && r.width > 0 && r.top >= 0;
+    }));
+  await pageP.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'portrait-gameplay.png') });
+  console.log('render-check: portrait shot captured');
+  await contextP.close();
 
   if (errors.length > 0) {
     console.error('render-check: console/page errors:');

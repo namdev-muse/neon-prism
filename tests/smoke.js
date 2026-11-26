@@ -1,4 +1,4 @@
-// Neon Prism v0.4.0 — smoke tests for the pure sim (physics.js).
+// Neon Prism v0.5.0 — smoke tests for the pure sim (physics.js).
 // Run: node tests/smoke.js
 import {
   VERSION, CHAMBERS, chamberById, traceBeam, createRun, startRun,
