@@ -1,5 +1,11 @@
 # Neon Prism — Devlog
 
+## v0.4.0 — M4 Progression & Depth (2026-11-26)
+
+- **Endless Lattice mode**: seeded chambers that scale as you climb. Each chamber is generated backward from a solution — lay a beam path (mirrors at the bends, a prism branch from depth 3, receptors on the path), dress it with decoy mirrors and off-path walls, then flip exactly `par` path mirrors to make the starting state. Every candidate is verified before it ships to the player: solver par must equal the scramble count (no shortcuts), the start must be unsolved, and a random-rotate bot must rarely win. Par scales 2 → 13 with depth; budget is always par + 1. Clear to climb; one budget fail ends the run and banks the best streak + lattice score. Deterministic in (seed, depth) — `?endless=SEED` is the playtest path.
+- **Ranks fixed so all three tiers are reachable**: the old moves-only rule made B impossible (budget caps moves at par + 1, inside the old A band). Ranks now read moves AND time — S = par moves, fast; B = spent the slack move and slow; A = everything else. Badges are color-coded (S gold, A cyan, B violet) on chamber cards and the complete screen.
+- Verification: smoke 140/140 (adds rank-tier and endless determinism/scaling checks), bot gates all pass (solver rides 10 lattice depths; random bot 14% at the par-2 teaching depths — same allowance as campaign chamber 1 — and ≤4% deeper, so flailing cannot climb), render check PASS (adds the full endless flow: seeded entry, clear → streak, Next Lattice, fail → best banked), size sweep inspected by eye.
+
 ## v0.3.0 — M3 Feel & Juice (2026-11-26)
 
 - Every event now fires its full feedback bundle in the same frame as the input: rotate-snap (sound + sparks at the mirror + micro-shake), beam-block sparks where each beam head dies at a wall or the chamber edge (the sim now reports beam endpoints), receptor-lit (sound + shake + burst + LIT pop), solve (hit-stop + slow-mo + flash + zoom + gold shockwave ring + per-receptor bursts + the score as a number pop), budget-fail (lose sting + heavy shake + red flash + endpoint sparks + partial-score pop). Cumulative fx counters in the test hook assert no event can silently go dead.
