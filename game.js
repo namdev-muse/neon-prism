@@ -341,9 +341,13 @@ function tryRotate(index) {
   burst(m.x + 0.5, m.y + 0.5, '#22e6ff', 8);
   feel.trauma = Math.min(1, feel.trauma + 0.08);
   // Beam-block bundle (M3): sparks where each beam head dies at a wall
-  // or the chamber edge, so a wrong bend reads instantly.
+  // or the chamber edge, so a wrong bend reads instantly. Sparks spawn
+  // at the impact edge (half a cell along the beam direction) — the M3
+  // playtest found cell-centre sparks too easy to miss.
+  const DIRV = { E: [1, 0], W: [-1, 0], N: [0, -1], S: [0, 1] };
   for (const ep of run.trace.endpoints) {
-    burst(ep.x + 0.5, ep.y + 0.5, '#7df2ff', 3);
+    const [dx, dy] = DIRV[ep.dir] || [0, 0];
+    burst(ep.x + 0.5 + dx * 0.5, ep.y + 0.5 + dy * 0.5, '#aef4ff', 7);
     feel.fxCounts.block++;
   }
   if (run.lastLit) {
@@ -549,8 +553,15 @@ function draw(run, dt) {
     for (const s of segs) {
       // Clamp the far end at the chamber border: the trace records the
       // out-of-bounds cell centre, but the beam must stop at the wall.
-      const ex = Math.max(0, Math.min(chamber.cols, s.x2 + 0.5));
-      const ey = Math.max(0, Math.min(chamber.rows, s.y2 + 0.5));
+      let ex = Math.max(0, Math.min(chamber.cols, s.x2 + 0.5));
+      let ey = Math.max(0, Math.min(chamber.rows, s.y2 + 0.5));
+      // A beam dying on a wall cell stops at the wall's edge (the shared
+      // border between the two cells), not inside the block — the M3
+      // playtest saw the beam overlapping block interiors.
+      if (chamber.walls.some((w) => w.x === s.x2 && w.y === s.y2)) {
+        ex = (s.x1 + s.x2) / 2 + 0.5;
+        ey = (s.y1 + s.y2) / 2 + 0.5;
+      }
       ctx.moveTo(px(s.x1 + 0.5), py(s.y1 + 0.5));
       ctx.lineTo(px(ex), py(ey));
     }
