@@ -1,8 +1,9 @@
-// Neon Prism v0.3.0 — smoke tests for the pure sim (physics.js).
+// Neon Prism v0.4.0 — smoke tests for the pure sim (physics.js).
 // Run: node tests/smoke.js
 import {
   VERSION, CHAMBERS, chamberById, traceBeam, createRun, startRun,
   rotateMirror, mirrorIndexAt, solve, reflect, prismTurn, rankFor,
+  endlessChamber, endlessTarget,
 } from '../physics.js';
 
 let passed = 0;
@@ -144,6 +145,64 @@ for (const c of CHAMBERS) {
   const lost = startRun(1);
   rotateMirror(lost, 2); rotateMirror(lost, 3); rotateMirror(lost, 4);
   check('lost run names its lit-only score part', lost.phase === 'lost' && lost.scoreParts && lost.scoreParts.lit === lost.score);
+}
+
+{
+  // M4 ranks: all three tiers reachable inside the budget (par + 1).
+  // S = par moves, fast. A = par but slow, or slack move but brisk.
+  // B = slack move AND slow.
+  const base = startRun(1);
+  const sol = solve(base.chamber);
+  const mk = (extraMove, time) => {
+    const run = startRun(1);
+    for (const i of sol.path) rotateMirror(run, i);
+    run.time = time;
+    if (extraMove) { run.moves = run.chamber.parMoves + 1; }
+    return run;
+  };
+  check('rank S: par moves, fast', rankFor(mk(false, 10)) === 'S');
+  check('rank A: par moves, slow', rankFor(mk(false, 999)) === 'A');
+  check('rank A: slack move, brisk', rankFor(mk(true, 10)) === 'A');
+  check('rank B: slack move, slow', rankFor(mk(true, 999)) === 'B');
+  check('rank null when not won', rankFor(startRun(1)) === null);
+}
+
+{
+  // M4 Endless Lattice: deterministic, scaling, solvable, unsolved start.
+  const a = endlessChamber(42, 3);
+  const b = endlessChamber(42, 3);
+  check('endless chamber is deterministic in (seed, depth)', JSON.stringify(a) === JSON.stringify(b));
+  check('endless chamber is flagged endless with depth', a.endless === true && a.depth === 3);
+  let prevPar = 0;
+  let scaling = true;
+  for (let d = 0; d < 10; d++) {
+    const c = endlessChamber(42, d);
+    if (!c) { scaling = false; break; }
+    const t = endlessTarget(d);
+    const s = solve(c);
+    if (!s || s.moves !== c.parMoves || c.parMoves !== t.par) scaling = false;
+    if (c.parMoves < prevPar) scaling = false;
+    prevPar = c.parMoves;
+    const start = traceBeam(c, c.mirrors.map((m) => m.orient));
+    if (start.solved) scaling = false;
+    const cells = new Set();
+    let overlap = false;
+    for (const p of [c.emitter, ...c.walls, ...c.mirrors, ...c.prisms, ...c.receptors]) {
+      const k = p.x + ',' + p.y;
+      if (cells.has(k) || p.x < 0 || p.x >= c.cols || p.y < 0 || p.y >= c.rows) overlap = true;
+      cells.add(k);
+    }
+    if (overlap) scaling = false;
+    if (c.budget !== c.parMoves + 1) scaling = false;
+  }
+  check('endless depths 0-9 scale (par 2->6), solvable at par, unsolved start, no overlaps', scaling);
+  check('endless prism appears by depth 3', endlessChamber(42, 3).prisms.length === 1);
+  check('endless depth 0 has no prism', endlessChamber(42, 0).prisms.length === 0);
+  // Solver replays an endless chamber through the public hook.
+  const c = endlessChamber(7, 5);
+  const run = createRun(c);
+  for (const i of solve(c).path) rotateMirror(run, i);
+  check('solver bot clears an endless chamber through rotateMirror', run.phase === 'won' && run.moves <= c.budget);
 }
 
 console.log(`smoke: ${passed}/${passed + failed} passed`);

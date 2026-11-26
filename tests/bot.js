@@ -1,4 +1,4 @@
-// Neon Prism v0.3.0 — bot harness (anti-slop gates).
+// Neon Prism v0.4.0 — bot harness (anti-slop gates).
 // Run: node tests/bot.js
 //
 // Gates:
@@ -12,7 +12,7 @@
 //    (A laser puzzle's state space makes a 0% random gate a coin flip
 //    on the teaching chamber; the honest gate is solver 100% vs
 //    random far below it, plus the deterministic dumb bots at 0%.)
-import { CHAMBERS, startRun, rotateMirror, solve, mulberry32 } from '../physics.js';
+import { CHAMBERS, startRun, createRun, rotateMirror, solve, mulberry32, endlessChamber } from '../physics.js';
 
 let failed = 0;
 function check(name, cond, extra) {
@@ -54,6 +54,44 @@ for (const chamber of CHAMBERS) {
   const limit = chamber.id === 1 ? 0.35 : 0.10;
   check(`chamber ${chamber.id}: random-rotate bot rarely wins (${wins}/${SEEDS} = ${(rate * 100).toFixed(0)}% < ${(limit * 100).toFixed(0)}%)`,
     rate < limit, `wins=${wins}`);
+}
+
+// --- M4 Endless Lattice gates -------------------------------------------------
+// Solver bot rides far (10 depths in sequence); random-rotate bot fails
+// near the start (win rate stays under the campaign gate at every depth).
+{
+  let streak = 0;
+  for (let d = 0; d < 10; d++) {
+    const c = endlessChamber(42, d);
+    if (!c) break;
+    const run = createRun(c);
+    for (const i of solve(c).path) rotateMirror(run, i);
+    if (run.phase !== 'won') break;
+    streak++;
+  }
+  check('endless: solver bot rides 10 depths', streak === 10, `streak=${streak}`);
+
+  for (let d = 0; d < 6; d++) {
+    const c = endlessChamber(42, d);
+    const rotIdx = c.mirrors.map((m, i) => (m.fixed ? -1 : i)).filter((i) => i >= 0);
+    let wins = 0;
+    const SEEDS = 50;
+    for (let s = 0; s < SEEDS; s++) {
+      const rng = mulberry32(555000 + d * 101 + s);
+      const run = createRun(c);
+      while (run.phase === 'playing') {
+        rotateMirror(run, rotIdx[Math.floor(rng() * rotIdx.length)]);
+      }
+      if (run.phase === 'won') wins++;
+    }
+    // Depths 0-1 are par-2 teaching depths — same allowance as campaign
+    // chamber 1 (<35%); deeper depths hold the strict <10% gate. Either
+    // way the flail bot cannot climb: ~0.12^2 x 0.04 to pass depth 2.
+    const limit = d < 2 ? 0.35 : 0.1;
+    check(`endless depth ${d}: random-rotate bot rarely wins (${wins}/${SEEDS})`, wins / SEEDS < limit, `wins=${wins}`);
+    const idle = createRun(c);
+    check(`endless depth ${d}: no-input bot loses`, !idle.trace.solved);
+  }
 }
 
 if (failed > 0) { console.error(`bot: ${failed} failure(s)`); process.exit(1); }

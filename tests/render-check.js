@@ -1,4 +1,4 @@
-// Neon Prism v0.3.0 — headless browser render check.
+// Neon Prism v0.4.0 — headless browser render check.
 // Serves the game dir over local HTTP, loads it in a headless browser, and
 // asserts the M1 core, by hook and by eye:
 //   - the menu renders over a LIVE demo (the solver plays chamber 1
@@ -110,7 +110,11 @@ try {
     const b = document.getElementById('btn-play');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Play');
   }));
-  check('no version text on the player-facing menu', !/v0\.3\.0|0\.3\.0/.test(menuText), menuText.slice(0, 200));
+  check('no version text on the player-facing menu', !/v0\.4\.0|0\.4\.0/.test(menuText), menuText.slice(0, 200));
+  check('M4 menu has the Endless Lattice mode button', await page.evaluate(() => {
+    const b = document.getElementById('btn-endless');
+    return b && !b.classList.contains('hidden') && b.textContent.includes('Endless Lattice');
+  }));
   check('no engine text on the player-facing menu', !/three\.js|canvas 2d|webgl/i.test(menuText));
   check('menu lists 12 chambers', await page.evaluate(() => window.__prism.chambers().length === 12));
   const demo1 = await page.evaluate(() => window.__prism.info());
@@ -179,6 +183,8 @@ try {
     await page.evaluate(() => document.getElementById('complete-parts').textContent));
   check('complete screen shows the clear rank badge', await page.evaluate(() =>
     /^RANK [SAB]$/.test(document.getElementById('complete-rank').textContent.trim())));
+  check('M4 rank badge carries its tier color class', await page.evaluate(() =>
+    /^rank-[SAB]$/.test(document.getElementById('complete-rank').className.trim())));
   check('best score is saved after the clear', await page.evaluate(() => {
     const s = window.__prism.save;
     return s.best && s.best[1] && s.best[1].score > 0;
@@ -191,6 +197,14 @@ try {
   check('feel state returns to rest (trauma 0, timeScale 1, flash 0, zoom 0)',
     feelRest.trauma === 0 && feelRest.timeScale === 1 && feelRest.flashT === 0 && feelRest.zoomT === 0,
     JSON.stringify(feelRest));
+  // M4: the cleared chamber's card shows its rank badge with tier class.
+  await page.click('#btn-chambers');
+  await page.waitForFunction(() => !document.getElementById('chambers').classList.contains('hidden'), null, { timeout: 5000 });
+  check('M4 chamber card shows the saved rank badge', await page.evaluate(() => {
+    const card = document.querySelector('#chamber-grid .level-card');
+    const rank = card && card.querySelector('.card-rank');
+    return rank && /^RANK [SAB]$/.test(rank.textContent.trim()) && /rank-[SAB]/.test(rank.className);
+  }));
   await context.close();
 
   // --- pause + denied cue ---------------------------------------------------
@@ -277,6 +291,50 @@ try {
   await page5.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'chamber12-1280x720.png') });
   console.log('render-check: chamber 12 shot captured');
   await context5.close();
+
+  // --- M4 Endless Lattice ------------------------------------------------------
+  const contextE = await browser.newContext({ viewport: { width: 1280, height: 720 }, timezoneId: 'Asia/Bangkok' });
+  const pageE = await contextE.newPage();
+  pageE.on('console', (msg) => { if (msg.type() === 'error') errors.push(`endless console: ${msg.text()}`); });
+  pageE.on('pageerror', (err) => errors.push(`endless pageerror: ${String(err)}`));
+  await pageE.goto(`http://127.0.0.1:${port}/?endless=42`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await pageE.waitForFunction(() => window.__prism, null, { timeout: 30000 });
+  await pageE.waitForFunction(() => window.__prism.state.phase === 'playing', null, { timeout: 5000 });
+  check('M4 ?endless=42 jumps into a seeded lattice at depth 0', await pageE.evaluate(() => {
+    const i = window.__prism.info();
+    return i.mode === 'endless' && i.endless && i.endless.seed === 42 && i.endless.depth === 0 && i.endless.streak === 0;
+  }));
+  check('M4 endless HUD names the lattice depth', await pageE.evaluate(() =>
+    document.getElementById('hud-chamber').textContent.includes('Lattice Depth 1')));
+  await pageE.evaluate(() => window.__prism.autopilot(true));
+  await pageE.waitForFunction(() => window.__prism.state.phase === 'complete', null, { timeout: 60000 });
+  check('M4 autopilot clears lattice depth 0, streak banks', await pageE.evaluate(() => {
+    const s = window.__prism.state;
+    return s.won === true && s.endlessStreak === 1 && s.endlessScore > 0;
+  }));
+  check('M4 lattice complete screen offers Next Lattice', await pageE.evaluate(() =>
+    document.getElementById('complete-title').textContent === 'Lattice Clear' &&
+    document.getElementById('btn-next').textContent === 'Next Lattice' &&
+    !document.getElementById('btn-next').classList.contains('hidden')));
+  await pageE.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'endless-complete-1280x720.png') });
+  await pageE.click('#btn-next');
+  await pageE.waitForFunction(() => window.__prism.state.phase === 'playing' && window.__prism.state.endlessDepth === 1, null, { timeout: 10000 });
+  check('M4 Next Lattice climbs to depth 1', await pageE.evaluate(() =>
+    document.getElementById('hud-chamber').textContent.includes('Lattice Depth 2')));
+  // Waste the budget: the run ends and the best streak/score bank.
+  await pageE.evaluate(() => {
+    const P = window.__prism;
+    const budget = P.state.run.chamber.budget;
+    for (let i = 0; i < budget && P.state.phase === 'playing'; i++) P.rotateIndex(0);
+  });
+  await pageE.waitForFunction(() => window.__prism.state.phase === 'gameover', null, { timeout: 10000 });
+  check('M4 lattice fail banks the best streak + score', await pageE.evaluate(() => {
+    const s = window.__prism.save;
+    return s.endless && s.endless.bestStreak >= 1 && s.endless.bestScore > 0 &&
+      document.getElementById('gameover-title').textContent === 'Lattice Broken';
+  }));
+  await pageE.screenshot({ timeout: 300000, path: path.join(SHOTS_DIR, 'endless-gameover-1280x720.png') });
+  await contextE.close();
 
   // --- toggles + FPS guard ----------------------------------------------------
   const contextG = await browser.newContext({ viewport: { width: 1280, height: 720 }, timezoneId: 'Asia/Bangkok' });
