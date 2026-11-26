@@ -32,10 +32,12 @@
     <h1 class="title">NEON <span>PRISM</span></h1>
     <p class="tagline">Rotate the mirrors. Route the beam. Light every receptor.</p>
     <button id="btn-play" class="primary" type="button">Play</button>
+    <button id="btn-endless" type="button">Endless Lattice</button>
     <button id="btn-chambers" type="button">Chambers</button>
     <button id="btn-howto" type="button">How to Play</button>
     <button id="btn-settings" type="button">Settings</button>
     <p id="menu-best" class="note"></p>
+    <p id="menu-endless-best" class="note"></p>
   </div>
 </div>
 
@@ -53,6 +55,8 @@
     <p>Tap or click a <strong>mirror</strong> to rotate it. Mirrors bend the laser beam 90 degrees.</p>
     <p><strong>Prisms</strong> split the beam in two — straight on, and turned. <strong>Walls</strong> stop the beam.</p>
     <p>Light <strong>every receptor</strong> at the same time to clear the chamber. Each rotation costs a move — run out of moves and the chamber fails.</p>
+    <p>Clear ranks: <strong>S</strong> at par moves, fast · <strong>A</strong> a clean clear · <strong>B</strong> spends the slack move slowly. Best rank is saved per chamber.</p>
+    <p><strong>Endless Lattice:</strong> seeded chambers that scale as you climb. Clear to go deeper — one failed chamber ends the run. Best streak and score are saved.</p>
     <p>Keyboard: arrows or Tab select a mirror, Space rotates, R resets, P pauses, M mutes.</p>
     <button id="btn-howto-back" type="button">Back</button>
   </div>
@@ -89,7 +93,7 @@
     <p id="complete-score">Score 0</p>
     <p id="complete-detail" class="note"></p>
     <p id="complete-parts" class="note"></p>
-    <p class="complete-ranks note">S at par moves, A within 2 of par</p>
+    <p class="complete-ranks note">S at par, fast · A clean clear · B slack move, slow</p>
     <button id="btn-next" class="primary" type="button">Next Chamber</button>
     <button id="btn-complete-menu" type="button">Menu</button>
   </div>
@@ -97,7 +101,7 @@
 
 <div id="gameover" class="screen hidden">
   <div class="panel">
-    <h2>Out of Moves</h2>
+    <h2 id="gameover-title">Out of Moves</h2>
     <p id="gameover-detail" class="note"></p>
     <button id="btn-retry" class="primary" type="button">Try Again</button>
     <button id="btn-gameover-menu" type="button">Menu</button>

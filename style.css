@@ -84,7 +84,15 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--cyan); }
 .level-card { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 14px 10px; }
 .level-card .card-name { font-size: 1em; }
 .level-card .card-best { color: var(--gold); font-size: 0.85em; }
-.level-card .card-rank { color: var(--magenta); font-weight: 900; }
+.level-card .card-rank { font-weight: 900; letter-spacing: 1px; }
+/* Rank badges (M4): S gold, A cyan, B violet — same colors on cards and
+   the complete screen so a rank reads at a glance. */
+.rank-S { color: var(--gold); text-shadow: 0 0 10px rgba(255, 210, 61, 0.7); }
+.rank-A { color: var(--cyan); text-shadow: 0 0 10px rgba(34, 230, 255, 0.7); }
+.rank-B { color: var(--violet); text-shadow: 0 0 10px rgba(178, 107, 255, 0.7); }
+#complete-rank { font-size: 1.6em; font-weight: 900; letter-spacing: 3px; margin: 0; }
+#btn-endless { border-color: var(--violet); }
+#btn-endless:hover, #btn-endless:focus-visible { background: rgba(178, 107, 255, 0.3); }
 
 /* Menu pop-in */
 @keyframes popIn {

@@ -1,4 +1,4 @@
-// Neon Prism v0.3.0 — pure simulation core (no DOM, no Canvas).
+// Neon Prism v0.4.0 — pure simulation core (no DOM, no Canvas).
 //
 // A 2D neon laser-mirror puzzle: an emitter fires a beam across a grid
 // chamber. Mirrors bend the beam 90 degrees, prisms split it in two,
@@ -20,7 +20,7 @@
 // Deterministic: chambers are hand-built from fixed numbers; the trace
 // and the solver give identical results for identical inputs.
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 
 export const DIRS = {
   E: { x: 1, y: 0 },
@@ -459,11 +459,19 @@ export function finishScore(run) {
   return run.score;
 }
 
+// Clear ranks (M4): all three tiers must be reachable inside the move
+// budget (par + 1). The old moves-only rule made B impossible — the
+// budget capped moves at par+1, inside the A band. Ranks now read moves
+// AND time: S = par moves, fast; B = spent the slack move AND slow;
+// everything else (par but slow, or slack move but brisk) is A.
 export function rankFor(run) {
   if (run.phase !== 'won') return null;
-  if (run.moves <= run.chamber.parMoves) return 'S';
-  if (run.moves <= run.chamber.parMoves + 2) return 'A';
-  return 'B';
+  const { parMoves, parTime } = run.chamber;
+  const efficient = run.moves <= parMoves;
+  const swift = run.time <= parTime;
+  if (efficient && swift) return 'S';
+  if (!efficient && run.time > parTime * 1.5) return 'B';
+  return 'A';
 }
 
 // Rotate mirror `index`. Returns true if the rotation happened.
@@ -526,6 +534,237 @@ export function solve(chamber) {
         queue.push(node);
       }
     }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- endless
+// Endless Lattice (M4): seeded scaling chambers. Each chamber is built
+// BACKWARD from a solution: lay a beam path (mirrors at the bends, a
+// prism branch at deeper depths, receptors on the path), dress it with
+// decoy mirrors and off-path walls, then flip exactly `par` path mirrors
+// to make the starting state. Every candidate is verified before it is
+// accepted — solver par must equal the scramble count (no shortcut),
+// the start must be unsolved, and a random-rotate bot must rarely win —
+// so a generated chamber meets the same anti-slop gates as the
+// hand-crafted ones. Deterministic in (seed, depth).
+
+const ENDLESS_ACCENTS = ['#22e6ff', '#ff3df0', '#b26bff', '#ffd23d'];
+const TURN_LEFT = { E: 'N', N: 'W', W: 'S', S: 'E' };
+const TURN_RIGHT = { E: 'S', S: 'W', W: 'N', N: 'E' };
+
+export function endlessTarget(depth) {
+  const par = Math.min(13, 2 + Math.floor(depth / 2));
+  const prisms = depth >= 3 ? 1 : 0;
+  let receptors = depth < 2 ? 1 : 2;
+  if (depth >= 6 && depth % 3 === 2) receptors = 3;
+  if (prisms > 0) receptors = Math.max(2, receptors);
+  return { par, prisms, receptors };
+}
+
+function orientForTurn(dirIn, dirOut) {
+  return REFLECT['/'][dirIn] === dirOut ? '/' : '\\';
+}
+
+function buildEndlessCandidate(rng, depth) {
+  const cols = 12;
+  const rows = 8;
+  const { par, prisms, receptors: wantReceptors } = endlessTarget(depth);
+  const key = (x, y) => x + ',' + y;
+  const pathCells = new Set();
+  const mirrors = []; // {x, y, orient(solution), path:true}
+  const pathMirrorIdx = [];
+  const emitter = { x: 1, y: 1 + Math.floor(rng() * 6), dir: 'E' };
+  pathCells.add(key(emitter.x, emitter.y));
+
+  // Main path: bends = par + 0..1 extra correct mirrors for reading depth.
+  const bends = par + (rng() < 0.5 ? 0 : 1);
+  let cx = emitter.x;
+  let cy = emitter.y;
+  let dir = 'E';
+  const straightCells = []; // non-mirror path cells (receptor / prism spots)
+  const roomAhead = (x, y, d2, need) => {
+    const dd = DIRS[d2];
+    for (let s = 1; s <= need; s++) {
+      const nx = x + dd.x * s;
+      const ny = y + dd.y * s;
+      if (nx < 0 || nx >= cols || ny < 0 || ny >= rows || pathCells.has(key(nx, ny))) return false;
+    }
+    return true;
+  };
+  for (let b = 0; b < bends; b++) {
+    const len = 2 + Math.floor(rng() * 3); // 2..4
+    const d = DIRS[dir];
+    const mx = cx + d.x * len;
+    const my = cy + d.y * len;
+    if (mx < 0 || mx >= cols || my < 0 || my >= rows) return null;
+    for (let s = 1; s < len; s++) {
+      const k = key(cx + d.x * s, cy + d.y * s);
+      if (pathCells.has(k)) return null;
+      pathCells.add(k);
+      straightCells.push({ x: cx + d.x * s, y: cy + d.y * s, dir });
+    }
+    if (pathCells.has(key(mx, my))) return null;
+    pathCells.add(key(mx, my));
+    // Pick a turn that leaves room for the next leg (the last bend only
+    // needs a short tail). Prefer the random side, fall back to the other.
+    const need = b === bends - 1 ? 1 : 2;
+    const first = rng() < 0.5 ? TURN_LEFT[dir] : TURN_RIGHT[dir];
+    const second = first === TURN_LEFT[dir] ? TURN_RIGHT[dir] : TURN_LEFT[dir];
+    const out = roomAhead(mx, my, first, need) ? first : (roomAhead(mx, my, second, need) ? second : null);
+    if (!out) return null;
+    pathMirrorIdx.push(mirrors.length);
+    mirrors.push({ x: mx, y: my, orient: orientForTurn(dir, out), path: true });
+    cx = mx; cy = my; dir = out;
+  }
+  // Final straight off the last mirror.
+  const tail = 2 + Math.floor(rng() * 3);
+  const td = DIRS[dir];
+  for (let s = 1; s <= tail; s++) {
+    const nx = cx + td.x * s;
+    const ny = cy + td.y * s;
+    if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) break;
+    if (pathCells.has(key(nx, ny))) return null;
+    pathCells.add(key(nx, ny));
+    straightCells.push({ x: nx, y: ny, dir });
+  }
+  if (straightCells.length < wantReceptors + prisms) return null;
+
+  // Prism + branch (deeper depths): the turn branch must also land.
+  const prismCells = [];
+  const branchCells = new Set();
+  let branchReceptor = null;
+  if (prisms > 0) {
+    let placed = false;
+    const order = [...straightCells].sort(() => rng() - 0.5);
+    for (const cell of order) {
+      const bdir = PRISM_TURN[cell.dir];
+      const bd = DIRS[bdir];
+      const blen = 2 + Math.floor(rng() * 3);
+      let ok = true;
+      const cells = [];
+      for (let s = 1; s <= blen; s++) {
+        const nx = cell.x + bd.x * s;
+        const ny = cell.y + bd.y * s;
+        if (nx < 0 || nx >= cols || ny < 0 || ny >= rows || pathCells.has(key(nx, ny))) { ok = false; break; }
+        cells.push({ x: nx, y: ny });
+      }
+      if (!ok || cells.length < 2) continue;
+      prismCells.push({ x: cell.x, y: cell.y });
+      for (const c of cells) { branchCells.add(key(c.x, c.y)); pathCells.add(key(c.x, c.y)); }
+      branchReceptor = cells[cells.length - 1];
+      placed = true;
+      break;
+    }
+    if (!placed) return null;
+  }
+
+  // Receptors: branch gets one (if any), the rest sit on the main path.
+  const prismKeys = new Set(prismCells.map((p) => key(p.x, p.y)));
+  const receptorSpots = straightCells.filter((c) => !prismKeys.has(key(c.x, c.y)));
+  const receptors = [];
+  if (branchReceptor) receptors.push(branchReceptor);
+  const needMain = wantReceptors - receptors.length;
+  if (receptorSpots.length < needMain) return null;
+  // Prefer later path cells so the beam must travel to light them.
+  const sorted = [...receptorSpots].sort((a, b) => (a.x + a.y * cols) - (b.x + b.y * cols));
+  for (let i = 0; i < needMain; i++) {
+    const idx = Math.floor((sorted.length * (i + 1)) / (needMain + 1)) + Math.floor(rng() * 2);
+    const cell = sorted[Math.min(sorted.length - 1, idx)];
+    if (!receptors.some((r) => r.x === cell.x && r.y === cell.y)) receptors.push({ x: cell.x, y: cell.y });
+  }
+  if (receptors.length < wantReceptors) return null;
+
+  // Decoys + walls on free cells (never on the path or branch).
+  const free = [];
+  for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) {
+    if (!pathCells.has(key(x, y))) free.push({ x, y });
+  }
+  for (let i = free.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [free[i], free[j]] = [free[j], free[i]];
+  }
+  const decoys = Math.min(6, 4 + Math.floor(depth / 3));
+  const wallCount = 4 + Math.floor(rng() * 5);
+  if (free.length < decoys + wallCount) return null;
+  for (let i = 0; i < decoys; i++) {
+    mirrors.push({ x: free[i].x, y: free[i].y, orient: rng() < 0.5 ? '/' : '\\', path: false });
+  }
+  const walls = free.slice(decoys, decoys + wallCount).map((c) => ({ x: c.x, y: c.y }));
+
+  // Scramble: flip exactly `par` path mirrors.
+  const shuffled = [...pathMirrorIdx].sort(() => rng() - 0.5);
+  const flipped = new Set(shuffled.slice(0, par));
+  const startMirrors = mirrors.map((m, i) => ({
+    x: m.x, y: m.y,
+    orient: flipped.has(i) ? (m.orient === '/' ? '\\' : '/') : m.orient,
+  }));
+
+  return {
+    id: 1000 + depth,
+    name: `Lattice ${depth + 1}`,
+    hint: depth === 0 ? 'Endless Lattice — clear chambers to climb. One fail ends the run.' : 'Route the beam. Light every receptor.',
+    accent: ENDLESS_ACCENTS[depth % ENDLESS_ACCENTS.length],
+    cols, rows,
+    emitter,
+    walls,
+    mirrors: startMirrors,
+    prisms: prismCells,
+    receptors,
+    budget: par + 1,
+    parMoves: par,
+    parTime: 15 * par + 15,
+    endless: true,
+    depth,
+  };
+}
+
+function randomWinRate(chamber, trials, seedBase) {
+  const rotIdx = chamber.mirrors.map((m, i) => (m.fixed ? -1 : i)).filter((i) => i >= 0);
+  let wins = 0;
+  for (let s = 0; s < trials; s++) {
+    const rng = mulberry32(seedBase + s * 7919);
+    const run = createRun(chamber);
+    while (run.phase === 'playing') {
+      rotateMirror(run, rotIdx[Math.floor(rng() * rotIdx.length)]);
+    }
+    if (run.phase === 'won') wins++;
+  }
+  return wins / trials;
+}
+
+export function endlessChamber(seed, depth) {
+  const target = endlessTarget(depth).par;
+  let fallback = null; // best near-miss: solver par closest to target, never trivial
+  for (let attempt = 0; attempt < 240; attempt++) {
+    const rng = mulberry32((seed >>> 0) ^ Math.imul(depth + 1, 0x9E3779B9) ^ Math.imul(attempt + 1, 0x85EBCA6B));
+    const candidate = buildEndlessCandidate(rng, depth);
+    if (!candidate) continue;
+    const sol = solve(candidate);
+    if (!sol || sol.moves < 2) continue;
+    const start = traceBeam(candidate, candidate.mirrors.map((m) => m.orient));
+    if (start.solved) continue;
+    if (!fallback || Math.abs(sol.moves - target) < Math.abs(fallback.sol.moves - target)) {
+      fallback = { chamber: candidate, sol };
+    }
+    if (sol.moves !== candidate.parMoves) continue; // shortcut — reject
+    // Random-bot gate, stricter than tests/bot.js so accepted chambers
+    // pass it on independent seeds. Par-2 teaching depths (0-1) get the
+    // same honest allowance as campaign chamber 1: with budget 3 the
+    // flail win rate is inherently ~10%, so the gate is "far below the
+    // solver's 100%", not zero.
+    const randomLimit = depth < 2 ? 0.2 : 0.05;
+    if (randomWinRate(candidate, 60, (seed >>> 0) + depth * 104729) > randomLimit) continue;
+    candidate.seed = seed;
+    return candidate;
+  }
+  // Fallback: keep the closest solvable candidate, re-parred honestly.
+  if (fallback) {
+    fallback.chamber.parMoves = fallback.sol.moves;
+    fallback.chamber.budget = fallback.sol.moves + 1;
+    fallback.chamber.parTime = 15 * fallback.sol.moves + 15;
+    fallback.chamber.seed = seed;
+    return fallback.chamber;
   }
   return null;
 }

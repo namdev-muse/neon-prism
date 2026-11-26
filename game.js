@@ -1,8 +1,8 @@
-// Neon Prism v0.3.0 — game shell (Canvas 2D rendering, screens, feel).
+// Neon Prism v0.4.0 — game shell (Canvas 2D rendering, screens, feel).
 // Pure sim lives in physics.js; this file owns presentation + input.
 import {
-  VERSION, CHAMBERS, chamberById, startRun, rotateMirror,
-  mirrorIndexAt, solve, rankFor,
+  VERSION, CHAMBERS, chamberById, startRun, createRun, rotateMirror,
+  mirrorIndexAt, solve, rankFor, endlessChamber,
 } from './physics.js';
 
 const SAVE_KEY = 'neon-prism-save-v1';
@@ -14,6 +14,7 @@ function defaultSave() {
     version: 1,
     best: {},
     unlocked: 1,
+    endless: { bestStreak: 0, bestScore: 0 },
     settings: { volume: 0.8, shake: 1, music: true, sfx: true, flash: true, muted: false, textSize: 'normal', contrast: false },
   };
 }
@@ -23,7 +24,7 @@ function loadSave() {
     if (!raw) return defaultSave();
     const s = JSON.parse(raw);
     const d = defaultSave();
-    return { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) } };
+    return { ...d, ...s, settings: { ...d.settings, ...(s.settings || {}) }, endless: { ...d.endless, ...(s.endless || {}) } };
   } catch { return defaultSave(); }
 }
 const save = loadSave();
@@ -108,7 +109,12 @@ function setMusic(on) {
 // ------------------------------------------------------------------ state
 const state = {
   phase: 'menu', // menu | chambers | howto | settings | playing | pause | complete | gameover
+  mode: 'campaign', // campaign | endless (Endless Lattice, M4)
   chamberId: 1,
+  endlessSeed: 0,
+  endlessDepth: 0,
+  endlessStreak: 0,
+  endlessScore: 0,
   run: null,
   demoRun: null,
   demoChamber: 1,
@@ -172,6 +178,10 @@ function clearTransient() {
 function refreshMenu() {
   const cleared = Object.keys(save.best).length;
   $('menu-best').textContent = cleared > 0 ? `${cleared} chamber${cleared === 1 ? '' : 's'} cleared` : 'No chambers cleared yet — Play starts Chamber 1.';
+  const e = save.endless;
+  $('menu-endless-best').textContent = e.bestStreak > 0
+    ? `Endless Lattice best: streak ${e.bestStreak} · score ${e.bestScore}`
+    : 'Endless Lattice: seeded chambers that scale — one fail ends the run.';
 }
 function refreshChambers() {
   const grid = $('chamber-grid');
@@ -185,7 +195,7 @@ function refreshChambers() {
     const best = save.best[c.id];
     b.innerHTML = `<span class="card-name">${c.id}. ${c.name}</span>` +
       (locked ? '<span class="card-best">Locked</span>' :
-        best ? `<span class="card-best">Best ${best.score}</span><span class="card-rank">RANK ${best.rank}</span>` :
+        best ? `<span class="card-best">Best ${best.score}</span><span class="card-rank rank-${best.rank}">RANK ${best.rank}</span>` :
         '<span class="card-best">Not cleared</span>');
     b.addEventListener('click', () => { sfx.tick(); startChamber(c.id); });
     b.addEventListener('mouseenter', () => sfx.tick());
@@ -194,12 +204,9 @@ function refreshChambers() {
 }
 
 // ------------------------------------------------------------------ run control
-function startChamber(id) {
-  ensureAudio();
-  const run = startRun(id);
-  if (!run) return;
+function beginRun(run) {
   state.run = run;
-  state.chamberId = id;
+  state.chamberId = run.chamber.id;
   state.phase = 'playing';
   state.done = false;
   state.won = false;
@@ -216,18 +223,56 @@ function startChamber(id) {
   if (save.settings.music) setMusic(true);
 }
 
+function startChamber(id) {
+  ensureAudio();
+  const run = startRun(id);
+  if (!run) return;
+  state.mode = 'campaign';
+  beginRun(run);
+}
+
+// Endless Lattice (M4): seeded scaling chambers. Clear to climb; one
+// budget fail ends the run and banks the best streak + score.
+function startEndless(seed) {
+  ensureAudio();
+  state.mode = 'endless';
+  state.endlessSeed = (seed === undefined ? Math.floor(Math.random() * 1000000) : seed) >>> 0;
+  state.endlessDepth = 0;
+  state.endlessStreak = 0;
+  state.endlessScore = 0;
+  startEndlessChamber(0);
+}
+
+function startEndlessChamber(depth) {
+  const chamber = endlessChamber(state.endlessSeed, depth);
+  if (!chamber) { quitToMenu(); return; }
+  state.endlessDepth = depth;
+  beginRun(createRun(chamber));
+}
+
+function restartCurrent() {
+  if (state.mode === 'endless') startEndlessChamber(state.endlessDepth);
+  else startChamber(state.chamberId);
+}
+
 function endRun() {
   const run = state.run;
   if (!run) return;
   state.done = true;
   state.won = run.phase === 'won';
+  const endless = state.mode === 'endless';
   if (run.phase === 'won') {
     const rank = rankFor(run);
-    const prev = save.best[run.chamber.id];
-    if (!prev || run.score > prev.score) {
-      save.best[run.chamber.id] = { score: run.score, moves: run.moves, time: Math.round(run.time * 10) / 10, rank };
+    if (endless) {
+      state.endlessStreak++;
+      state.endlessScore += run.score;
+    } else {
+      const prev = save.best[run.chamber.id];
+      if (!prev || run.score > prev.score) {
+        save.best[run.chamber.id] = { score: run.score, moves: run.moves, time: Math.round(run.time * 10) / 10, rank };
+      }
+      if (run.chamber.id >= save.unlocked) save.unlocked = Math.min(CHAMBERS.length, run.chamber.id + 1);
     }
-    if (run.chamber.id >= save.unlocked) save.unlocked = Math.min(CHAMBERS.length, run.chamber.id + 1);
     persist();
     // Solve bundle (M3): hit-stop + slow-mo + flash + zoom + shockwave
     // ring + gold bursts on every receptor + the score as a number pop.
@@ -246,11 +291,15 @@ function endRun() {
     setTimeout(() => {
       if (state.phase !== 'playing') return;
       state.phase = 'complete';
-      const isLast = run.chamber.id >= CHAMBERS.length;
-      $('complete-title').textContent = isLast ? 'All Chambers Clear' : 'Chamber Clear';
-      $('complete-rank').textContent = 'RANK ' + rankFor(run);
+      const isLast = !endless && run.chamber.id >= CHAMBERS.length;
+      const rank = rankFor(run);
+      $('complete-title').textContent = endless ? 'Lattice Clear' : (isLast ? 'All Chambers Clear' : 'Chamber Clear');
+      $('complete-rank').textContent = 'RANK ' + rank;
+      $('complete-rank').className = 'rank-' + rank;
       $('complete-score').textContent = 'Score ' + run.score;
-      $('complete-detail').textContent = `${run.chamber.name} cleared in ${run.moves} moves (par ${run.chamber.parMoves})`;
+      $('complete-detail').textContent = endless
+        ? `Depth ${state.endlessDepth + 1} cleared in ${run.moves} moves (par ${run.chamber.parMoves}) · Streak ${state.endlessStreak} · Lattice score ${state.endlessScore}`
+        : `${run.chamber.name} cleared in ${run.moves} moves (par ${run.chamber.parMoves})`;
       const parts = run.scoreParts;
       $('complete-parts').textContent = parts
         ? `Clear ${parts.clear} + Efficiency ${parts.efficiency} + Time ${parts.time} = ${run.score}`
@@ -260,7 +309,7 @@ function endRun() {
       // it; the title carries the message and Menu is the action.
       $('btn-next').classList.toggle('hidden', isLast);
       $('btn-next').disabled = isLast;
-      $('btn-next').textContent = 'Next Chamber';
+      $('btn-next').textContent = endless ? 'Next Lattice' : 'Next Chamber';
       showScreen('complete');
       if (isLast) $('btn-complete-menu').focus();
     }, 900);
@@ -278,7 +327,19 @@ function endRun() {
     setTimeout(() => {
       if (state.phase !== 'playing') return;
       state.phase = 'gameover';
-      $('gameover-detail').textContent = `${run.chamber.name}: ${run.trace.litCount}/${run.trace.total} receptors lit in ${run.moves} moves. Score ${run.score}.`;
+      if (endless) {
+        // Bank the lattice best (M4): streak + cleared score.
+        if (state.endlessStreak > save.endless.bestStreak) save.endless.bestStreak = state.endlessStreak;
+        if (state.endlessScore > save.endless.bestScore) save.endless.bestScore = state.endlessScore;
+        persist();
+        $('gameover-title').textContent = 'Lattice Broken';
+        $('gameover-detail').textContent = `Broken at depth ${state.endlessDepth + 1} — streak ${state.endlessStreak}, lattice score ${state.endlessScore}. Best: streak ${save.endless.bestStreak} · score ${save.endless.bestScore}.`;
+        $('btn-retry').textContent = 'New Lattice';
+      } else {
+        $('gameover-title').textContent = 'Out of Moves';
+        $('gameover-detail').textContent = `${run.chamber.name}: ${run.trace.litCount}/${run.trace.total} receptors lit in ${run.moves} moves. Score ${run.score}.`;
+        $('btn-retry').textContent = 'Try Again';
+      }
       showScreen('gameover');
     }, 700);
   }
@@ -295,7 +356,11 @@ function quitToMenu() {
 function updateHud() {
   const run = state.run;
   if (!run) return;
-  $('hud-chamber').textContent = `Chamber ${run.chamber.id}: ${run.chamber.name}`;
+  // HUD shows current chamber state only (Tide lesson) — in Endless, the
+  // lattice depth/streak and the banked lattice score.
+  $('hud-chamber').textContent = state.mode === 'endless'
+    ? `Lattice Depth ${state.endlessDepth + 1} · Streak ${state.endlessStreak}`
+    : `Chamber ${run.chamber.id}: ${run.chamber.name}`;
   $('hud-receptors').textContent = `Receptors ${run.trace.litCount}/${run.trace.total}`;
   const left = run.chamber.budget - run.moves;
   $('hud-moves').textContent = `Moves left ${left}`;
@@ -303,7 +368,7 @@ function updateHud() {
   fill.style.width = `${Math.max(0, (left / run.chamber.budget) * 100)}%`;
   // MOVES meter low state (M3): the last move reads magenta, not gold.
   fill.classList.toggle('low', left <= 1);
-  $('hud-score').textContent = `Score ${run.score}`;
+  $('hud-score').textContent = state.mode === 'endless' ? `Lattice score ${state.endlessScore}` : `Score ${run.score}`;
 }
 
 // ------------------------------------------------------------------ input
@@ -390,7 +455,7 @@ window.addEventListener('keydown', (ev) => {
   }
   if (state.phase === 'playing') {
     if (k === 'p' || k === 'P' || k === 'Escape') { pauseGame(); return; }
-    if (k === 'r' || k === 'R') { startChamber(state.chamberId); return; }
+    if (k === 'r' || k === 'R') { restartCurrent(); return; }
     const rot = state.run.chamber.mirrors.map((m, i) => (m.fixed ? -1 : i)).filter((i) => i >= 0);
     if (k === 'Tab' || k === 'ArrowRight' || k === 'ArrowDown') {
       ev.preventDefault();
@@ -433,6 +498,7 @@ function bind(id, fn) {
   el.addEventListener('mouseenter', () => sfx.tick());
 }
 bind('btn-play', () => startChamber(Math.min(save.unlocked, CHAMBERS.length)));
+bind('btn-endless', () => startEndless());
 bind('btn-chambers', () => { state.phase = 'chambers'; showScreen('chambers'); });
 bind('btn-howto', () => { state.phase = 'howto'; showScreen('howto'); });
 bind('btn-settings', () => { state.phase = 'settings'; showScreen('settings'); });
@@ -441,11 +507,17 @@ bind('btn-howto-back', () => { state.phase = 'menu'; showScreen('menu'); });
 bind('btn-settings-back', () => { state.phase = 'menu'; showScreen('menu'); });
 bind('btn-pause', () => pauseGame());
 bind('btn-resume', () => resumeGame());
-bind('btn-restart', () => startChamber(state.chamberId));
+bind('btn-restart', () => restartCurrent());
 bind('btn-quit', () => quitToMenu());
-bind('btn-next', () => startChamber(Math.min(state.chamberId + 1, CHAMBERS.length)));
+bind('btn-next', () => {
+  if (state.mode === 'endless') startEndlessChamber(state.endlessDepth + 1);
+  else startChamber(Math.min(state.chamberId + 1, CHAMBERS.length));
+});
 bind('btn-complete-menu', () => quitToMenu());
-bind('btn-retry', () => startChamber(state.chamberId));
+bind('btn-retry', () => {
+  if (state.mode === 'endless') startEndless();
+  else startChamber(state.chamberId);
+});
 bind('btn-gameover-menu', () => quitToMenu());
 
 // Settings wiring.
@@ -809,6 +881,10 @@ function info() {
     beamSegments: segs.length,
     beamTip: { x: layout.ox + (last.x2 + 0.5) * layout.cell, y: layout.oy + (last.y2 + 0.5) * layout.cell },
     orients: [...run.orients],
+    mode: state.mode,
+    endless: state.mode === 'endless'
+      ? { seed: state.endlessSeed, depth: state.endlessDepth, streak: state.endlessStreak, score: state.endlessScore, par: run.chamber.parMoves }
+      : null,
   };
 }
 
@@ -830,6 +906,8 @@ window.__prism = {
   }),
   audio: () => ({ ...audioState, musicOn: save.settings.music, lift: musicLift() }),
   startChamber,
+  startEndless,
+  startEndlessChamber,
   rotateAt: (x, y) => {
     if (!state.run) return false;
     const idx = mirrorIndexAt(state.run.chamber, x, y);
@@ -856,9 +934,14 @@ applySettings();
 const params = new URLSearchParams(location.search);
 if (params.get('unlock') === '1') state.sessionUnlock = true;
 const deepChamber = parseInt(params.get('chamber') || '', 10);
+const deepEndless = params.get('endless');
 if (deepChamber >= 1 && deepChamber <= CHAMBERS.length) {
   state.sessionUnlock = true;
   startChamber(deepChamber);
+} else if (deepEndless !== null) {
+  // Playtest path (Apex lesson): ?endless=SEED jumps into a seeded lattice.
+  const seed = parseInt(deepEndless, 10);
+  startEndless(Number.isFinite(seed) ? seed : 42);
 } else {
   state.phase = 'menu';
   showScreen('menu');
