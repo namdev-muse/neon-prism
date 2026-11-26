@@ -1,4 +1,4 @@
-// Neon Prism v0.5.0 — headless browser render check.
+// Neon Prism v1.0.0 — headless browser render check.
 // Serves the game dir over local HTTP, loads it in a headless browser, and
 // asserts the M1 core, by hook and by eye:
 //   - the menu renders over a LIVE demo (the solver plays chamber 1
@@ -113,7 +113,7 @@ try {
     const b = document.getElementById('btn-play');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Play');
   }));
-  check('no version text on the player-facing menu', !/v0\.5\.0|0\.5\.0/.test(menuText), menuText.slice(0, 200));
+  check('no version text on the player-facing menu', !/v1\.0\.0|1\.0\.0/.test(menuText), menuText.slice(0, 200));
   check('M4 menu has the Endless Lattice mode button', await page.evaluate(() => {
     const b = document.getElementById('btn-endless');
     return b && !b.classList.contains('hidden') && b.textContent.includes('Endless Lattice');
