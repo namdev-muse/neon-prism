@@ -1,5 +1,20 @@
 # Neon Prism — Devlog
 
+## v1.0.0 — Release (2026-11-26)
+
+Release-only bump from the playtested v0.5.0 — no gameplay, feel or UI
+code changes. Ships the exact game that earned its M5 live playtest GO:
+12 hand-crafted chambers (par 2→13), Endless Lattice, S/A/B ranks,
+full feedback bundles, HUD pills, portrait starfield and Settings/perf
+readout. Version strings bumped (package.json, physics.js VERSION +
+header, game.js header, test headers and the render-check version
+assertion); README screenshots refreshed from the v1.0.0 build.
+Known issues carried from M5: Play is a Continue (starts at the
+furthest unlocked chamber — a fresh player starts at Chamber 1);
+large-text growth is modest. Verification: smoke + bot + headless
+render check + size sweep, live site verified serving 1.0.0, final
+live FUN playthrough GO before the release tag.
+
 ## v0.5.0 — M5 Polish & Robustness (2026-11-26)
 
 - **HUD readability pass**: each HUD cluster (chamber/receptors, moves meter, score/Pause) now sits on a pill backdrop so text stays legible over the bright beam, with more top breathing room and tabular numbers. The HUD shows current chamber state only — a render-check assertion now proves the moves counter resets to the full budget on restart (no stale max).
