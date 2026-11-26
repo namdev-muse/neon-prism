@@ -1,4 +1,4 @@
-// Neon Prism v0.5.0 — game shell (Canvas 2D rendering, screens, feel).
+// Neon Prism v1.0.0 — game shell (Canvas 2D rendering, screens, feel).
 // Pure sim lives in physics.js; this file owns presentation + input.
 import {
   VERSION, CHAMBERS, chamberById, startRun, createRun, rotateMirror,
