@@ -1,4 +1,4 @@
-// Neon Prism v0.4.0 — game shell (Canvas 2D rendering, screens, feel).
+// Neon Prism v0.5.0 — game shell (Canvas 2D rendering, screens, feel).
 // Pure sim lives in physics.js; this file owns presentation + input.
 import {
   VERSION, CHAMBERS, chamberById, startRun, createRun, rotateMirror,
@@ -287,7 +287,10 @@ function endRun() {
     feel.shockwaves.push({ x: run.chamber.cols / 2, y: run.chamber.rows / 2, t: 0, life: 0.6 });
     for (const r of run.chamber.receptors) burst(r.x + 0.5, r.y + 0.5, '#ffd23d', 16);
     burst(run.chamber.cols / 2, run.chamber.rows / 2, '#ffd23d', 40);
-    feel.pops.push({ x: run.chamber.cols / 2, y: run.chamber.rows / 2 - 0.5, text: '+' + run.score, t: 0 });
+    // M5 fix (M3/M4 carry-over): the score pop sat at chamber centre,
+    // hidden behind the complete panel. It now rises from the top
+    // third and the panel waits for it (1500ms) so the number reads.
+    feel.pops.push({ x: run.chamber.cols / 2, y: 1.2, text: '+' + run.score, t: 0 });
     setTimeout(() => {
       if (state.phase !== 'playing') return;
       state.phase = 'complete';
@@ -312,7 +315,7 @@ function endRun() {
       $('btn-next').textContent = endless ? 'Next Lattice' : 'Next Chamber';
       showScreen('complete');
       if (isLast) $('btn-complete-menu').focus();
-    }, 900);
+    }, 1500);
   } else {
     // Budget-fail bundle (M3): lose sting + heavy shake + red flash +
     // endpoint sparks + the partial score as a number pop.
@@ -323,7 +326,7 @@ function endRun() {
     feel.flashT = save.settings.flash ? 0.35 : 0;
     feel.flashMax = 0.35;
     for (const ep of run.trace.endpoints) burst(ep.x + 0.5, ep.y + 0.5, '#ff3df0', 6);
-    if (run.score > 0) feel.pops.push({ x: run.chamber.cols / 2, y: run.chamber.rows / 2 - 0.5, text: '+' + run.score, t: 0 });
+    if (run.score > 0) feel.pops.push({ x: run.chamber.cols / 2, y: 1.2, text: '+' + run.score, t: 0 });
     setTimeout(() => {
       if (state.phase !== 'playing') return;
       state.phase = 'gameover';
@@ -341,7 +344,7 @@ function endRun() {
         $('btn-retry').textContent = 'Try Again';
       }
       showScreen('gameover');
-    }, 700);
+    }, 1200);
   }
 }
 
@@ -559,10 +562,19 @@ function burst(gx, gy, color, n) {
 function computeLayout(chamber) {
   const W = canvas.width;
   const H = canvas.height;
-  const cell = Math.floor(Math.min(W / (chamber.cols + 1), H / (chamber.rows + 2.2)));
+  const portrait = H > W;
+  // M5 portrait framing: the 12x8 chamber is width-constrained in
+  // portrait, so trim the side padding to grow the cells and centre
+  // the chamber in the space below the HUD instead of dead-centre.
+  const sidePad = portrait ? 0.4 : 1;
+  const cell = Math.floor(Math.min(W / (chamber.cols + sidePad), H / (chamber.rows + 2.2)));
   const gw = cell * chamber.cols;
   const gh = cell * chamber.rows;
-  return { cell, ox: (W - gw) / 2, oy: (H - gh) / 2 + cell * 0.4, gw, gh };
+  const hudReserve = portrait ? Math.round(H * 0.14) : 0;
+  const oy = portrait
+    ? hudReserve + (H - hudReserve - gh) / 2
+    : (H - gh) / 2 + cell * 0.4;
+  return { cell, ox: (W - gw) / 2, oy, gw, gh, portrait };
 }
 
 function resize() {
@@ -577,6 +589,27 @@ function draw(run, dt) {
   const H = canvas.height;
   ctx.fillStyle = '#070718';
   ctx.fillRect(0, 0, W, H);
+  // M5 backdrop: a soft nebula glow + deterministic starfield over the
+  // whole canvas so letterbox bands (portrait top/bottom, ultrawide
+  // sides) read as sky, not dead space (Surge M5 pattern). Stars are
+  // screen-space and cheap — no allocations, fixed seed positions.
+  const now = performance.now() / 1000;
+  const glow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
+  glow.addColorStop(0, 'rgba(34, 34, 90, 0.55)');
+  glow.addColorStop(0.6, 'rgba(12, 12, 40, 0.25)');
+  glow.addColorStop(1, 'rgba(7, 7, 24, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#c7d2fe';
+  for (let i = 0; i < 110; i++) {
+    const sx = ((i * 7919) % 1000) / 1000 * W;
+    const sy = ((i * 104729) % 1000) / 1000 * H;
+    ctx.globalAlpha = 0.15 + 0.3 * (0.5 + 0.5 * Math.sin(now * (0.5 + (i % 5) * 0.25) + i * 1.7));
+    ctx.beginPath();
+    ctx.arc(sx, sy, 0.7 + (i % 3) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
   if (!run) return;
   const chamber = run.chamber;
   const { cell, ox, oy } = computeLayout(chamber);
@@ -760,7 +793,9 @@ function frame(now) {
     if (fpsShown < 28 && dprCap > 1) { fpsLowT++; if (fpsLowT >= 2) triggerFpsGuard(); }
     else fpsLowT = 0;
     const pr = $('perf-readout');
-    if (pr && state.phase === 'settings') pr.textContent = `${fpsShown} fps · render scale ${dprCap}x`;
+    // M5: keep the readout current at all times (not just while the
+    // Settings screen is open) and name the FPS guard when it fires.
+    if (pr) pr.textContent = `${fpsShown} fps · render scale ${dprCap}x${dprCap < 2 ? ' · FPS guard active' : ''}`;
   }
 
   // Feel timers run on real seconds.
@@ -880,6 +915,7 @@ function info() {
     score: run.score,
     beamSegments: segs.length,
     beamTip: { x: layout.ox + (last.x2 + 0.5) * layout.cell, y: layout.oy + (last.y2 + 0.5) * layout.cell },
+    layout: { cell: layout.cell, ox: layout.ox, oy: layout.oy, gw: layout.gw, gh: layout.gh, portrait: layout.portrait, W: canvas.width, H: canvas.height },
     orients: [...run.orients],
     mode: state.mode,
     endless: state.mode === 'endless'
@@ -893,6 +929,7 @@ window.__prism = {
   state,
   save,
   get dprCap() { return dprCap; },
+  fps: () => ({ fps: fpsShown, dprCap, guardActive: dprCap < 2 }),
   chambers: () => CHAMBERS.map((c) => ({ id: c.id, name: c.name })),
   info,
   feel: () => ({
@@ -931,6 +968,11 @@ window.__prism = {
 // ------------------------------------------------------------------ boot
 resize();
 applySettings();
+// M5: create the attract demo before the first frame so the menu's
+// first paint already shows the live beam (no empty first paint).
+state.demoRun = startRun(state.demoChamber);
+state.demoTimer = 0.8;
+{ const pr = $('perf-readout'); if (pr) pr.textContent = '— fps · render scale 2x'; }
 const params = new URLSearchParams(location.search);
 if (params.get('unlock') === '1') state.sessionUnlock = true;
 const deepChamber = parseInt(params.get('chamber') || '', 10);

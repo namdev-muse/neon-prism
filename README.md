@@ -16,6 +16,7 @@ A 2D neon laser-mirror puzzle. Rotate mirrors to steer a laser beam through pris
 - Score rewards clearing, move efficiency, and speed — the clear screen breaks the total down (Clear + Efficiency + Time). Best score and rank are saved per chamber: **S** at par moves, fast · **A** a clean clear · **B** spends the slack move slowly. Rank badges show on the chamber cards (S gold, A cyan, B violet).
 - Every rotation snaps with sparks and a micro-shake; the beam throws sparks where it dies on a wall; lighting a receptor lifts the generative music an octave.
 - Keyboard: arrows or Tab select a mirror, Space rotates, R resets, P pauses, M mutes. Touch: tap mirrors directly.
+- Settings: volume, screen-shake strength, music, sound effects, flashing effects, large text, high contrast — plus a live performance readout (fps + render scale). An FPS guard steps the render scale down automatically if the frame rate stays low. Portrait phones get a stacked HUD and a starfield backdrop so the chamber never floats in dead space.
 
 ## Endless Lattice
 

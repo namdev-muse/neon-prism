@@ -16,30 +16,43 @@ html, body {
   overflow: hidden;
 }
 body.text-large { font-size: 20px; }
-body.high-contrast { --panel: #000; --text: #fff; --muted: #e8f2ff; }
+body.text-large .panel { font-size: 17px; }
+body.text-large #hud { font-size: 17px; }
+body.text-large button { font-size: 17px; }
+body.text-large #hud-toast { font-size: 16px; }
+body.high-contrast { --panel: rgba(0, 0, 8, 0.97); --text: #fff; --muted: #e8f2ff; }
+body.high-contrast #hud .hud-left, body.high-contrast #hud .hud-center, body.high-contrast #hud .hud-right { background: rgba(0, 0, 8, 0.92); }
 #game {
   position: fixed; inset: 0; width: 100%; height: 100%;
   display: block; touch-action: manipulation;
 }
 .hidden { display: none !important; }
 
-/* HUD */
+/* HUD (M5 readability pass: pill backdrops so text stays legible over
+   the bright beam, more top breathing room, tabular numbers. The HUD
+   shows current chamber state only — never a stale max.) */
 #hud {
   position: fixed; top: 0; left: 0; right: 0;
-  display: flex; justify-content: space-between; align-items: flex-start;
-  padding: calc(10px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 10px calc(14px + env(safe-area-inset-left));
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  padding: calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 10px calc(14px + env(safe-area-inset-left));
   pointer-events: none; z-index: 5;
-  font-weight: 700; text-shadow: 0 0 8px rgba(34, 230, 255, 0.6);
+  font-weight: 700; font-variant-numeric: tabular-nums;
 }
 #hud button { pointer-events: auto; }
-.hud-left, .hud-right { display: flex; flex-direction: column; gap: 4px; }
+.hud-left, .hud-center, .hud-right {
+  display: flex; flex-direction: column; gap: 4px;
+  background: rgba(7, 7, 24, 0.72); border: 1px solid rgba(34, 230, 255, 0.35);
+  border-radius: 10px; padding: 7px 12px;
+  text-shadow: 0 0 8px rgba(34, 230, 255, 0.6);
+  backdrop-filter: blur(2px);
+}
 .hud-right { align-items: flex-end; }
-.hud-center { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 180px; }
-#hud-moves-bar { width: 180px; height: 10px; background: rgba(255,255,255,0.15); border: 1px solid var(--cyan); border-radius: 5px; overflow: hidden; }
+.hud-center { align-items: center; min-width: 190px; }
+#hud-moves-bar { width: 190px; height: 10px; background: rgba(255,255,255,0.15); border: 1px solid var(--cyan); border-radius: 5px; overflow: hidden; }
 #hud-moves-fill { height: 100%; width: 100%; background: var(--gold); transition: width 0.15s; }
 #hud-moves-fill.low { background: var(--magenta); }
 #hud-toast {
-  position: fixed; left: 50%; top: 84px; transform: translateX(-50%);
+  position: fixed; left: 50%; top: calc(92px + env(safe-area-inset-top)); transform: translateX(-50%);
   background: var(--panel); border: 1px solid var(--gold); color: var(--gold);
   padding: 8px 16px; border-radius: 999px; font-weight: 700; z-index: 6;
   max-width: 90vw; text-align: center;
@@ -76,8 +89,12 @@ button.primary { background: var(--cyan); color: #04121a; font-size: 1.15em; }
 button.primary:hover { background: #7df2ff; }
 button:disabled { opacity: 0.45; cursor: default; transform: none; }
 label { display: flex; align-items: center; gap: 10px; justify-content: space-between; text-align: left; }
+/* M5 fix (M4 carry-over): checkbox labels keep box + text together at
+   the left instead of space-between pushing the text to the far edge. */
+label:has(> input[type="checkbox"]) { justify-content: flex-start; }
 input[type="range"] { flex: 1; accent-color: var(--cyan); }
-input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--cyan); }
+input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--cyan); flex: none; }
+#perf-readout { min-height: 1.3em; }
 
 /* Chamber cards */
 #chamber-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
@@ -112,6 +129,19 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--cyan); }
 @media (max-width: 700px) {
   #hud { flex-direction: column; align-items: stretch; gap: 6px; }
   .hud-left, .hud-right, .hud-center { align-items: center; text-align: center; }
+  .hud-center { min-width: 0; }
+  #hud-moves-bar { width: min(70vw, 260px); }
+  /* Below the stacked HUD pills (left + center + right + gaps) so the
+     toast never covers the Pause button (M5 eye-check fix). */
+  #hud-toast { top: calc(306px + env(safe-area-inset-top)); }
   .title { font-size: 34px; }
   .panel { padding: 20px; }
+}
+@media (min-width: 2000px) {
+  #hud { font-size: 18px; }
+  .hud-center { min-width: 240px; }
+  #hud-moves-bar { width: 240px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  button, .panel > * { transition: none; animation: none; }
 }

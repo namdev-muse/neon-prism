@@ -1,4 +1,4 @@
-// Neon Prism v0.4.0 — pure simulation core (no DOM, no Canvas).
+// Neon Prism v0.5.0 — pure simulation core (no DOM, no Canvas).
 //
 // A 2D neon laser-mirror puzzle: an emitter fires a beam across a grid
 // chamber. Mirrors bend the beam 90 degrees, prisms split it in two,
@@ -20,7 +20,7 @@
 // Deterministic: chambers are hand-built from fixed numbers; the trace
 // and the solver give identical results for identical inputs.
 
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 
 export const DIRS = {
   E: { x: 1, y: 0 },
